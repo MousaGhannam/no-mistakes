@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.95.0](https://github.com/kunchenguid/no-mistakes/compare/v1.94.0...v1.95.0) (2026-10-11)
+
+
+### Features
+
+* **config:** allow machine-local PR publication defaults ([#1430](https://github.com/kunchenguid/no-mistakes/issues/1430)) ([c80bff0](https://github.com/kunchenguid/no-mistakes/commit/c80bff06ac6aa4c040970b629d39f84e9509ea6f))
+
+
+### Bug Fixes
+
+* **pipeline:** opt-in rebase of a green GitHub PR that is BEHIND its base ([#1404](https://github.com/kunchenguid/no-mistakes/issues/1404)) ([e20dec9](https://github.com/kunchenguid/no-mistakes/commit/e20dec9820d821bc38f62f4f7bd52f58f3ea760a))
+
 ## [1.94.0](https://github.com/kunchenguid/no-mistakes/compare/v1.93.0...v1.94.0) (2026-10-11)
 
 
