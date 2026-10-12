@@ -25,7 +25,7 @@ var hazardMatchers = []struct {
 	class string
 	re    *regexp.Regexp
 }{
-	{HazardCredential, regexp.MustCompile(`(?i)\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|authorization|auth|cookie|credentials?)\b\s*[:=]|(?i)\bbearer\s+\S|-----BEGIN [A-Z ]*PRIVATE KEY-----`)},
+	{HazardCredential, regexp.MustCompile(`(?i)\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|authorization|auth|cookie|credentials?)\b["']?\s*[:=]|(?i)\bbearer\s+\S|-----BEGIN [A-Z ]*PRIVATE KEY-----`)},
 	{HazardAbsolutePath, regexp.MustCompile(`(?i)(^|[^a-z0-9_.~-])/(home|users|root|tmp|var|etc|opt|private|mnt|srv|usr|run|proc|volumes|data|workspace|nix)/|(^|[^a-z0-9_.-])~/|\b[a-z]:\\|file://`)},
 	{HazardEndpoint, regexp.MustCompile(`(?i)\b(localhost|0\.0\.0\.0)\b|\[::1?\]|\b\d{1,3}(\.\d{1,3}){3}\b|\b[a-z][a-z0-9+.-]*://|\b[a-z][a-z0-9-]*(\.[a-z0-9-]+)*:\d{4,5}\b`)},
 	{HazardProcessID, regexp.MustCompile(`(?i)\bpid\s*[:=#]?\s*\d+`)},

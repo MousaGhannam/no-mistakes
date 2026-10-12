@@ -34,6 +34,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/kunchenguid/no-mistakes/internal/types"
@@ -208,6 +209,9 @@ func artifactIssues(n int, a types.TestArtifact) []string {
 		if strings.TrimSpace(a.Path) != "" || strings.TrimSpace(a.URL) != "" {
 			issues = append(issues, fmt.Sprintf("artifact %d: text-quote is published from content alone - drop path and url, or report the file as a log", n))
 		}
+		if hasControlCharacters(normalizeQuote(a.Content)) {
+			issues = append(issues, fmt.Sprintf("artifact %d: text-quote content contains control characters - quote plain text only", n))
+		}
 		if quoteTooLong(a.Content) {
 			issues = append(issues, fmt.Sprintf("artifact %d: text-quote content is longer than %d bytes or %d lines - quote less, or report the file as a log", n, MaxQuoteBytes, MaxQuoteLines))
 		}
@@ -313,11 +317,14 @@ func publish(a types.TestArtifact, n int, resolve func(string) string) (Publicat
 		}
 		return Publication{Kind: KindLog, Label: machine, Log: &summary}, true
 	case KindTextQuote:
-		quote := strings.TrimSpace(a.Content)
+		// The quote is checked and published exactly as recorded, apart from
+		// line endings: rewriting it (collapsing whitespace, say) would show
+		// different evidence and could shrink an over-cap quote under the cap.
+		quote := normalizeQuote(a.Content)
 		if quote == "" {
 			return Publication{}, false
 		}
-		if quoteTooLong(quote) || len(Hazards(quote)) > 0 {
+		if quoteTooLong(quote) || hasControlCharacters(quote) || len(Hazards(quote)) > 0 {
 			return Publication{Kind: KindTextQuote, Label: machine, Withheld: WithheldQuote}, true
 		}
 		return Publication{Kind: KindTextQuote, Label: publishableLabel(a.Label, machine), Quote: quote}, true
@@ -344,8 +351,26 @@ func publishableLabel(label, machine string) string {
 	return label
 }
 
+// normalizeQuote is the one rewrite a quote gets: CRLF line endings become LF
+// and surrounding blank space is dropped.
+func normalizeQuote(content string) string {
+	return strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n"))
+}
+
+// hasControlCharacters reports a control character other than newline and
+// tab. A fence cannot neutralize one, and a lone carriage return or escape
+// sequence would change how the published quote reads.
+func hasControlCharacters(content string) bool {
+	for _, r := range content {
+		if r != '\n' && r != '\t' && unicode.IsControl(r) {
+			return true
+		}
+	}
+	return false
+}
+
 func quoteTooLong(content string) bool {
-	content = strings.TrimSpace(content)
+	content = normalizeQuote(content)
 	return len(content) > MaxQuoteBytes || strings.Count(content, "\n")+1 > MaxQuoteLines
 }
 

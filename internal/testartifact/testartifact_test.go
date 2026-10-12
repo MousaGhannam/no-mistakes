@@ -74,6 +74,8 @@ func TestValidate_KindsAndPostures(t *testing.T) {
 		{name: "quote with a path", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "ok", Path: "/evidence/x.txt"}, want: []string{"artifact 1: text-quote is published from content alone"}},
 		{name: "quote over the cap", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: strings.Repeat("a", MaxQuoteBytes+1)}, want: []string{"artifact 1: text-quote content is longer than"}},
 		{name: "quote over the line cap", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: strings.Repeat("a\n", MaxQuoteLines+1)}, want: []string{"artifact 1: text-quote content is longer than"}},
+		{name: "quote with a JSON credential", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: `{"password":"short"}`}, want: []string{"credential"}},
+		{name: "quote with a control character", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "ok\x1b[31mred"}, want: []string{"artifact 1: text-quote content contains control characters"}},
 		{name: "quote with a secret label", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticSecret}, want: []string{"artifact 1: text-quote content contains value-shaped text (", "credential"}},
 		{name: "quote with a home path", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticHomePath}, want: []string{"absolute-path"}},
 		{name: "quote with an endpoint", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticEndpoint}, want: []string{"endpoint"}},
@@ -361,10 +363,21 @@ func TestPublish_QuotesAreCappedAndScannedAtTheBoundary(t *testing.T) {
 		{Kind: "text-quote", Label: "Stored before the scan", Content: "ok\n" + syntheticSecret},
 		{Kind: "text-quote", Label: "Too long", Content: strings.Repeat("x", MaxQuoteBytes+1)},
 	}
+	artifacts = append(artifacts,
+		types.TestArtifact{Kind: "text-quote", Label: "Spacing", Content: "{\"message\":\"Hello   world\"}\r\n\tindented"},
+		types.TestArtifact{Kind: "text-quote", Label: "Control", Content: "ok\x1b[31mred"},
+	)
 	pubs := PublishAll(artifacts, allowAll)
-	if len(pubs) != 3 {
+	if len(pubs) != 5 {
 		t.Fatalf("PublishAll() = %+v", pubs)
 	}
+	if pubs[3].Quote != "{\"message\":\"Hello   world\"}\n\tindented" {
+		t.Fatalf("quote was rewritten: %q, want it verbatim apart from line endings", pubs[3].Quote)
+	}
+	if pubs[4].Withheld != WithheldQuote {
+		t.Fatalf("quote with a control character = %+v, want withheld", pubs[4])
+	}
+	pubs = pubs[:3]
 	if pubs[0].Quote != "## Testing\n\n- Evidence captured" || pubs[0].Label != "Rendered heading" {
 		t.Fatalf("clean quote = %+v", pubs[0])
 	}
@@ -452,6 +465,10 @@ func TestHazards_ClassesArePinned(t *testing.T) {
 		{"token refresh succeeded", nil},
 		{"TestPRStep_ForeignAttestationsInEveryComponentDoNotShadowTheRealOne", nil},
 		{"api_key=synthetic", []string{HazardCredential}},
+		{`{"password":"short"}`, []string{HazardCredential}},
+		{`{'api_key': 'x'}`, []string{HazardCredential}},
+		{`{"token" : "x"}`, []string{HazardCredential}},
+		{`{"tokens_used": 3}`, nil},
 		{"Authorization: Bearer synthetic", []string{HazardCredential}},
 		{"-----BEGIN OPENSSH PRIVATE KEY-----", []string{HazardCredential}},
 		{"opened /home/example-user/notes.txt", []string{HazardAbsolutePath}},

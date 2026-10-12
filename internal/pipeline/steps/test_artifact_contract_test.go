@@ -233,3 +233,40 @@ func TestBuildTestingSummaryForPR_TypedArtifactsGolden(t *testing.T) {
 		t.Fatalf("Testing section drifted.\n--- got ---\n%s\n--- want ---\n%s", md, want)
 	}
 }
+
+// A quote is published as recorded: the prose cleanup applied to other agent
+// text must not change what the quoted evidence says.
+func TestBuildTestingSummaryForPR_QuoteIsPublishedVerbatim(t *testing.T) {
+	t.Parallel()
+	quote := "{\"message\":\"Hello   world\"}\n\tindented"
+	raw := fmt.Sprintf(`{"findings":[],"summary":"","testing_summary":"Evidence was collected.","artifacts":[{"kind":"text-quote","label":"Response","content":%q}]}`, quote)
+
+	md := testingSummaryFor(t, raw, t.TempDir(), "", scm.ProviderGitHub)
+
+	if !strings.Contains(md, "```text\n"+quote+"\n```") {
+		t.Fatalf("expected the quote verbatim, got:\n%s", md)
+	}
+}
+
+// The media uploader only needs media, so collecting its candidates reads no
+// log file; the Testing section's own collection is the one log scan.
+func TestCollectPRTestingArtifacts_ReadsNoLogs(t *testing.T) {
+	t.Parallel()
+	dir, baseSHA, headSHA := setupGitRepo(t)
+	sctx := newTestContextWithDBRecords(t, prDraftAgent(), dir, baseSHA, headSHA, config.Commands{})
+	logPath := writeEvidenceFile(t, sctx.EvidenceDir, "server.log", []byte(syntheticServerLog))
+	shot := writeEvidenceFile(t, sctx.EvidenceDir, "checkout.png", []byte("png"))
+	findings := fmt.Sprintf(`{"findings":[],"summary":"","testing_summary":"Evidence was collected.","artifacts":[{"kind":"log","label":"Server boot","path":%q},{"kind":"image","shows":"ui","label":"Checkout","path":%q}]}`, logPath, shot)
+	insertCompletedStep(t, sctx, types.StepTest, findings, "")
+	steps, err := sctx.DB.GetStepsByRun(sctx.Run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rounds := map[string][]*db.StepRound{}
+
+	pubs := collectPRTestingArtifacts(sctx, steps, rounds)
+
+	if len(pubs) != 1 || pubs[0].Media == nil {
+		t.Fatalf("upload candidates = %+v, want only the media", pubs)
+	}
+}

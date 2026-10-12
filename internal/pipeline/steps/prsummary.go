@@ -560,12 +560,22 @@ func collectTestingDetails(sr *db.StepResult, rounds []*db.StepRound) []string {
 // conversion. Every caller renders or uploads the publications it returns,
 // never the recorded artifacts themselves.
 func collectTestingArtifacts(sr *db.StepResult, rounds []*db.StepRound, opts testingSummaryOptions) []testartifact.Publication {
+	return testartifact.PublishAll(recordedTestingArtifacts(sr, rounds, opts), opts.localArtifactFile)
+}
+
+// collectTestingMedia is collectTestingArtifacts for a caller that needs only
+// media: it resolves no log path, so it reads no log file.
+func collectTestingMedia(sr *db.StepResult, rounds []*db.StepRound, opts testingSummaryOptions) []testartifact.Publication {
+	return testartifact.PublishAll(recordedTestingArtifacts(sr, rounds, opts), nil)
+}
+
+func recordedTestingArtifacts(sr *db.StepResult, rounds []*db.StepRound, opts testingSummaryOptions) []types.TestArtifact {
 	seen := map[string]bool{}
 	var artifacts []types.TestArtifact
 	for _, raw := range testingEvidenceFindingsJSON(sr, rounds) {
 		artifacts = appendTestingArtifacts(artifacts, seen, raw, opts)
 	}
-	return testartifact.PublishAll(artifacts, opts.localArtifactFile)
+	return artifacts
 }
 
 func testingEvidenceFindingsJSON(sr *db.StepResult, rounds []*db.StepRound) []*string {
@@ -604,13 +614,14 @@ func appendTestingArtifacts(artifacts []types.TestArtifact, seen map[string]bool
 		artifact.Kind = strings.ToLower(sanitizePromptText(artifact.Kind))
 		artifact.Path = sanitizeArtifactPath(artifact.Path, opts)
 		artifact.URL = sanitizeArtifactURL(artifact.URL)
-		artifact.Content = sanitizePromptMultilineText(artifact.Content)
+		// Content is left as recorded: only a text-quote publishes it, and
+		// the evidence contract checks and fences it verbatim.
 		artifact.Shows = strings.ToLower(sanitizePromptText(artifact.Shows))
 		key := artifact.Kind + "\x00" + artifact.Shows + "\x00" + artifact.Label + "\x00" + artifact.Path + "\x00" + artifact.URL + "\x00" + artifact.Content
 		if artifact.Label == "" || seen[key] {
 			continue
 		}
-		if artifact.Path == "" && artifact.URL == "" && artifact.Content == "" {
+		if artifact.Path == "" && artifact.URL == "" && strings.TrimSpace(artifact.Content) == "" {
 			continue
 		}
 		seen[key] = true

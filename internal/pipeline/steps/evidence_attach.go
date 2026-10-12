@@ -67,7 +67,7 @@ func collectPRTestingArtifacts(sctx *pipeline.StepContext, steps []*db.StepResul
 		if sr == nil || sr.StepName != types.StepTest {
 			continue
 		}
-		return collectTestingArtifacts(sr, rounds[sr.ID], opts)
+		return collectTestingMedia(sr, rounds[sr.ID], opts)
 	}
 	return nil
 }
