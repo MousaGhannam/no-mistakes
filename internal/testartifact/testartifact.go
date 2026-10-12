@@ -352,9 +352,17 @@ func publishableLabel(label, machine string) string {
 }
 
 // normalizeQuote is the one rewrite a quote gets: CRLF line endings become LF
-// and surrounding blank space is dropped.
+// and blank lines (and trailing space) around the quote are dropped. The
+// first line's indentation is kept, because it is part of what was quoted.
 func normalizeQuote(content string) string {
-	return strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n"))
+	content = strings.TrimRightFunc(strings.ReplaceAll(content, "\r\n", "\n"), unicode.IsSpace)
+	for {
+		line, rest, found := strings.Cut(content, "\n")
+		if !found || strings.TrimSpace(line) != "" {
+			return content
+		}
+		content = rest
+	}
 }
 
 // hasControlCharacters reports a control character other than newline and

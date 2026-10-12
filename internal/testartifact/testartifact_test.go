@@ -366,10 +366,14 @@ func TestPublish_QuotesAreCappedAndScannedAtTheBoundary(t *testing.T) {
 	artifacts = append(artifacts,
 		types.TestArtifact{Kind: "text-quote", Label: "Spacing", Content: "{\"message\":\"Hello   world\"}\r\n\tindented"},
 		types.TestArtifact{Kind: "text-quote", Label: "Control", Content: "ok\x1b[31mred"},
+		types.TestArtifact{Kind: "text-quote", Label: "Indented", Content: "\n  \n    indented first line\n  second  \n\n"},
 	)
 	pubs := PublishAll(artifacts, allowAll)
-	if len(pubs) != 5 {
+	if len(pubs) != 6 {
 		t.Fatalf("PublishAll() = %+v", pubs)
+	}
+	if pubs[5].Quote != "    indented first line\n  second" {
+		t.Fatalf("indented quote = %q, want its indentation kept and only surrounding blank lines dropped", pubs[5].Quote)
 	}
 	if pubs[3].Quote != "{\"message\":\"Hello   world\"}\n\tindented" {
 		t.Fatalf("quote was rewritten: %q, want it verbatim apart from line endings", pubs[3].Quote)
