@@ -1159,7 +1159,8 @@ type Test struct {
 // branch's history. Otherwise evidence stays on local disk under LocalRoot.
 // AttachMedia (default true) additionally uploads image and video artifacts to
 // GitHub user-attachments at PR render time so remote reviewers can open them
-// without an evidence branch. Text artifacts stay inlined or locally cited.
+// without an evidence branch; only media declared as showing ui or chart is
+// eligible. Log artifacts stay local and publish only a line/byte summary.
 type Evidence struct {
 	StoreInRepo bool
 	AttachMedia bool
@@ -1621,8 +1622,9 @@ intent:
 # Test-step evidence artifacts (screenshots, recordings, logs the test step
 # gathers to demonstrate the change works). By default they are kept on local
 # disk under <NM_HOME>/evidence. attach_media (default true) uploads image and
-# video artifacts to GitHub user-attachments when the PR is rendered so remote
-# reviewers can open them; text artifacts stay inlined. Opt in to
+# video artifacts declared as showing ui or chart to GitHub user-attachments when
+# the PR is rendered so remote reviewers can open them; log artifacts stay local
+# and the PR shows only a line/byte summary of each. Opt in to
 # store_in_repo to also publish the full directory to an orphan evidence branch
 # in the same repository and link it from the PR body. The evidence branch
 # shares no history with your code branches, so artifacts never enter the
