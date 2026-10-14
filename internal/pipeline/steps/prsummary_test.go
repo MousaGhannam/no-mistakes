@@ -11,6 +11,7 @@ import (
 
 	"github.com/kunchenguid/no-mistakes/internal/db"
 	"github.com/kunchenguid/no-mistakes/internal/scm"
+	"github.com/kunchenguid/no-mistakes/internal/testartifact"
 	"github.com/kunchenguid/no-mistakes/internal/types"
 )
 
