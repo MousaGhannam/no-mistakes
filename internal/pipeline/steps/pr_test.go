@@ -2749,7 +2749,7 @@ func TestPRStep_EmbeddedAttestationDoesNotShadowTheRealOne(t *testing.T) {
 	}
 	// A quote carrying a marker's identifier-shaped payload never reaches the
 	// choke point at all: the typed evidence contract withholds it.
-	if strings.Contains(content.Body, foreignSHA) || !strings.Contains(content.Body, "- Evidence: Quote 1 (kept local, not published: quote refused by the publication check)") {
+	if strings.Contains(content.Body, foreignSHA) || !strings.Contains(content.Body, "- Evidence: Quote 1 (not shown in this PR: quote refused by the publication check)") {
 		t.Fatalf("expected the quoted attestation withheld by the evidence contract:\n%s", content.Body)
 	}
 }
@@ -2787,7 +2787,7 @@ func TestPRStep_EvidenceQuotingAnOwnedBodyStaysRestampable(t *testing.T) {
 	// The typed evidence contract withholds a quote carrying the appendix's
 	// identifier-shaped markers, so none of them reach the body to confuse a
 	// later restamp.
-	if strings.Contains(content.Body, "Closes #95") || !strings.Contains(content.Body, "- Evidence: Quote 1 (kept local, not published: quote refused by the publication check)") {
+	if strings.Contains(content.Body, "Closes #95") || !strings.Contains(content.Body, "- Evidence: Quote 1 (not shown in this PR: quote refused by the publication check)") {
 		t.Fatalf("expected the quoted owned body withheld:\n%s", content.Body)
 	}
 

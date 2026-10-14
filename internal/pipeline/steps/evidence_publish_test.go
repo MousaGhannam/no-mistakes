@@ -118,7 +118,7 @@ func TestPublishRunEvidence_LandsOnOrphanBranchAndLinksFromThePRBody(t *testing.
 	}
 	// A log stays a summary even when the directory holding it was published:
 	// the PR body never links or quotes it.
-	if strings.Contains(md, "cli-run.txt") || !strings.Contains(md, "- Evidence: Log 1 (kept local, not published): ") {
+	if strings.Contains(md, "cli-run.txt") || !strings.Contains(md, "- Evidence: Log 1 (not shown in this PR): ") {
 		t.Fatalf("expected the log artifact as a summary only, got:\n%s", md)
 	}
 	if strings.Contains(md, "local file:") {

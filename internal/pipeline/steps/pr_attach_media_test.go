@@ -272,7 +272,7 @@ func TestPRStep_TextArtifactIsNotUploaded(t *testing.T) {
 	if strings.Contains(content.Body, "user-attachments") {
 		t.Fatalf("text artifact must not become a user-attachment, got:\n%s", content.Body)
 	}
-	if strings.Contains(content.Body, "it works") || !strings.Contains(content.Body, "- Evidence: Log 1 (kept local, not published): 1 line, 9 bytes") {
+	if strings.Contains(content.Body, "it works") || !strings.Contains(content.Body, "- Evidence: Log 1 (not shown in this PR): 1 line, 9 bytes") {
 		t.Fatalf("expected the log summarized and never inlined, got:\n%s", content.Body)
 	}
 }
@@ -308,8 +308,8 @@ func TestPRStep_TerminalAndUndeclaredMediaAreNeverUploaded(t *testing.T) {
 	}
 	for _, want := range []string{
 		"![Latency chart](" + testAttachmentURL + ")",
-		"- Evidence: Image 1 (kept local, not published: terminal capture)",
-		"- Evidence: Video 1 (kept local, not published: content not declared)",
+		"- Evidence: Image 1 (not shown in this PR: terminal capture)",
+		"- Evidence: Video 1 (not shown in this PR: content not declared)",
 	} {
 		if !strings.Contains(content.Body, want) {
 			t.Fatalf("expected %q, got:\n%s", want, content.Body)

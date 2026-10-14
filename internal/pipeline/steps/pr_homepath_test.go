@@ -134,7 +134,7 @@ func TestPRStep_BuildPRContentRedactsAbsoluteHomePaths(t *testing.T) {
 			}),
 			// A quote carrying a path is refused at the evidence boundary, so
 			// it never reaches the redaction at all.
-			wantVisible: []string{"- Evidence: Quote 1 (kept local, not published: quote refused by the publication check)"},
+			wantVisible: []string{"- Evidence: Quote 1 (not shown in this PR: quote refused by the publication check)"},
 		},
 		{
 			name:        "worktree path assignment inside captured output",
@@ -149,7 +149,7 @@ func TestPRStep_BuildPRContentRedactsAbsoluteHomePaths(t *testing.T) {
 			}),
 			// A quote carrying a path is refused at the evidence boundary, so
 			// it never reaches the redaction at all.
-			wantVisible: []string{"- Evidence: Quote 1 (kept local, not published: quote refused by the publication check)"},
+			wantVisible: []string{"- Evidence: Quote 1 (not shown in this PR: quote refused by the publication check)"},
 		},
 		{
 			name:        "the same path repeated many times",
@@ -168,7 +168,7 @@ func TestPRStep_BuildPRContentRedactsAbsoluteHomePaths(t *testing.T) {
 			}),
 			// A quote carrying a path is refused at the evidence boundary, so
 			// it never reaches the redaction at all.
-			wantVisible: []string{"- Evidence: Quote 1 (kept local, not published: quote refused by the publication check)"},
+			wantVisible: []string{"- Evidence: Quote 1 (not shown in this PR: quote refused by the publication check)"},
 		},
 		{
 			name: "a log file on disk publishes only its summary",
@@ -186,7 +186,7 @@ func TestPRStep_BuildPRContentRedactsAbsoluteHomePaths(t *testing.T) {
 					Path:  "%EVIDENCEFILE%",
 				}},
 			}),
-			wantVisible: []string{"- Evidence: Log 1 (kept local, not published): 4 lines, "},
+			wantVisible: []string{"- Evidence: Log 1 (not shown in this PR): 4 lines, "},
 		},
 		{
 			name:        "macOS home root",
@@ -199,7 +199,7 @@ func TestPRStep_BuildPRContentRedactsAbsoluteHomePaths(t *testing.T) {
 					Content: "rootdir: /Users/testuser/.no-mistakes/worktrees/ab12cd/1/svc",
 				}},
 			}),
-			wantVisible: []string{"- Evidence: Quote 1 (kept local, not published: quote refused by the publication check)"},
+			wantVisible: []string{"- Evidence: Quote 1 (not shown in this PR: quote refused by the publication check)"},
 		},
 		{
 			name:        "windows home root",
@@ -214,7 +214,7 @@ func TestPRStep_BuildPRContentRedactsAbsoluteHomePaths(t *testing.T) {
 			}),
 			// A quote carrying a path is refused at the evidence boundary, so
 			// it never reaches the redaction at all.
-			wantVisible: []string{"- Evidence: Quote 1 (kept local, not published: quote refused by the publication check)"},
+			wantVisible: []string{"- Evidence: Quote 1 (not shown in this PR: quote refused by the publication check)"},
 		},
 		{
 			name:        "testing summary prose",
@@ -335,7 +335,7 @@ func TestPRStep_ExecuteRedactsAbsoluteHomePathsBeforePublishing(t *testing.T) {
 			t.Fatalf("published PR content leaked %q:\n%s", needle, published)
 		}
 	}
-	for _, want := range []string{"Quote 1 (kept local, not published: quote refused by the publication check)", "evidence now lands under " + fixtureRedactedPath(".no-mistakes", "evidence", "run-1")} {
+	for _, want := range []string{"Quote 1 (not shown in this PR: quote refused by the publication check)", "evidence now lands under " + fixtureRedactedPath(".no-mistakes", "evidence", "run-1")} {
 		if !strings.Contains(published, want) {
 			t.Fatalf("expected %q in published PR content:\n%s", want, published)
 		}

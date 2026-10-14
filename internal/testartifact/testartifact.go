@@ -5,16 +5,16 @@
 //
 // The contract has three postures and no others:
 //
-//   - log: a local file. It is never public text. The only thing published is
-//     a machine-derived summary (an inert label, line and byte counts, a scan
-//     outcome, and counts of a fixed set of phases). Its bytes, its path, the
-//     agent's label, and any inline content stay local.
+//   - log: a local file. Its bytes are never shown in the pull request; only a
+//     machine-derived summary appears there (an inert label, line and byte
+//     counts, a scan outcome, and counts of a fixed set of phases). Its path,
+//     agent label, and inline content are also omitted from the pull request.
 //   - text-quote: a short excerpt the agent chose to show inline. It is capped
 //     and scanned for value-shaped text, and refused (never trimmed or
 //     rewritten) when either check fails.
 //   - image / video: media that declares what it shows (ui, chart, or
-//     terminal). Only ui and chart media are published; a terminal capture is
-//     a picture of a log and stays local like one.
+//     terminal). Only ui and chart media are shown in the pull request; a
+//     terminal capture is a picture of a log and is withheld from the PR.
 //
 // Validate is the contract as the agent sees it: an unknown kind or a
 // malformed posture is a structured rejection the analyzer correction turn
@@ -225,7 +225,7 @@ func artifactIssues(n int, a types.TestArtifact) []string {
 	default:
 		switch {
 		case shows == "":
-			issues = append(issues, fmt.Sprintf("artifact %d: %s missing shows - declare what it shows: %s (terminal captures are kept local and never published)", n, kind, strings.Join(knownShows, ", ")))
+			issues = append(issues, fmt.Sprintf("artifact %d: %s missing shows - declare what it shows: %s (terminal captures are not shown in the pull request)", n, kind, strings.Join(knownShows, ", ")))
 		case !slices.Contains(knownShows, shows):
 			if tokenShape.MatchString(shows) {
 				issues = append(issues, fmt.Sprintf("artifact %d: shows %q is not one of %s", n, shows, strings.Join(knownShows, ", ")))

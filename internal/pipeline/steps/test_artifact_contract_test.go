@@ -137,7 +137,7 @@ func TestTestFindingsSchema_DeclaresTheArtifactContract(t *testing.T) {
 	if got := strings.Join(items.Required, ","); got != "kind,label" {
 		t.Fatalf("artifact required = %q, want kind,label", got)
 	}
-	for _, want := range []string{"never published", "line and byte summary"} {
+	for _, want := range []string{"not shown in the pull request", "line and byte summary"} {
 		if !strings.Contains(items.Properties["kind"].Description, want) {
 			t.Fatalf("kind description %q missing %q", items.Properties["kind"].Description, want)
 		}
@@ -165,7 +165,8 @@ func TestTestStep_PromptDescribesTypedArtifacts(t *testing.T) {
 	prompt := ag.calls[0].Prompt
 	for _, want := range []string{
 		`kind "log"`,
-		"never published",
+		"not shown in the pull request",
+		"store_in_repo may still publish the whole evidence directory",
 		`kind "text-quote"`,
 		"closing reference",
 		"code fence",
@@ -199,7 +200,7 @@ func TestPRStep_LogBytesNeverReachThePRBody(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(content.Body, "- Evidence: Log 1 (kept local, not published): 7 lines, ") {
+		if !strings.Contains(content.Body, "- Evidence: Log 1 (not shown in this PR): 7 lines, ") {
 			t.Fatalf("%s: expected the log summary, got:\n%s", provider, content.Body)
 		}
 		for _, leak := range append(syntheticServerLogValues, "server.log", "Server boot") {
@@ -231,10 +232,10 @@ func TestBuildTestingSummaryForPR_TypedArtifactsGolden(t *testing.T) {
 
 	want := "## Testing\n\n" +
 		"Drove checkout live.\n\n" +
-		fmt.Sprintf("- Evidence: Log 1 (kept local, not published): 7 lines, %d bytes, complete; phases: ready 2, error 0, warning 0, shutdown 1\n\n", len(syntheticServerLog)) +
+		fmt.Sprintf("- Evidence: Log 1 (not shown in this PR): 7 lines, %d bytes, complete; phases: ready 2, error 0, warning 0, shutdown 1\n\n", len(syntheticServerLog)) +
 		"<details>\n<summary>Evidence: Receipt heading</summary>\n\n```text\n## Receipt\nTotal: 3 items\n```\n</details>\n\n" +
 		"![Checkout success](" + testAttachmentURL + ")\n\n" +
-		"- Evidence: Image 2 (kept local, not published: terminal capture)"
+		"- Evidence: Image 2 (not shown in this PR: terminal capture)"
 	if md != want {
 		t.Fatalf("Testing section drifted.\n--- got ---\n%s\n--- want ---\n%s", md, want)
 	}

@@ -766,7 +766,7 @@ func TestBuildTestingSummaryForPR_BitbucketCloudOmitsHTMLAndKeepsEvidence(t *tes
 		"### Evidence: Placement rectangle evidence",
 		"```text\n{\"button\":{\"top\":169}}\n```",
 		"[Checkout recording](https://example.com/checkout.mp4)",
-		"- Evidence: Log 1 (kept local, not published): 1 line, 18 bytes, complete; phases: ready 0, error 0, warning 0, shutdown 0",
+		"- Evidence: Log 1 (not shown in this PR): 1 line, 18 bytes, complete; phases: ready 0, error 0, warning 0, shutdown 0",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("expected %q in Bitbucket testing summary, got:\n%s", want, md)
@@ -990,7 +990,7 @@ func TestBuildTestingSummaryForPR_LogPublishesOnlyItsSummary(t *testing.T) {
 
 			md := testingSummaryFor(t, raw, t.TempDir(), evidenceRoot, tc.provider)
 
-			want := "- Evidence: Log 1 (kept local, not published): 7 lines, " + fmt.Sprint(len(syntheticServerLog)) + " bytes, complete; phases: ready 2, error 0, warning 0, shutdown 1"
+			want := "- Evidence: Log 1 (not shown in this PR): 7 lines, " + fmt.Sprint(len(syntheticServerLog)) + " bytes, complete; phases: ready 2, error 0, warning 0, shutdown 1"
 			if !strings.Contains(md, want) {
 				t.Fatalf("expected the log's machine summary %q, got:\n%s", want, md)
 			}
@@ -1012,7 +1012,7 @@ func TestBuildTestingSummaryForPR_LegacyTextEvidenceIsSummarizedNotEmbedded(t *t
 
 	md := testingSummaryFor(t, raw, t.TempDir(), evidenceRoot, scm.ProviderGitHub)
 
-	if !strings.Contains(md, "- Evidence: Log 1 (kept local, not published): 4 lines, ") || !strings.Contains(md, "- Evidence: Log 2 (kept local, not published): 4 lines, ") {
+	if !strings.Contains(md, "- Evidence: Log 1 (not shown in this PR): 4 lines, ") || !strings.Contains(md, "- Evidence: Log 2 (not shown in this PR): 4 lines, ") {
 		t.Fatalf("expected both legacy records summarized, got:\n%s", md)
 	}
 	assertNoneOf(t, md, "RENDERED WIZARD SCREEN", "Claude", "img src", "onerror", "file:///tmp/secret", "example.com", "Rendered setup wizard screens", "Wizard log", localPath, "```")
@@ -1032,7 +1032,7 @@ func TestBuildTestingSummaryForPR_RepoLogIsSummarizedNotLinked(t *testing.T) {
 
 	md := testingSummaryFor(t, raw, repoRoot, "", scm.ProviderGitHub)
 
-	if !strings.Contains(md, "- Evidence: Log 1 (kept local, not published): 2 lines, 29 bytes, complete") {
+	if !strings.Contains(md, "- Evidence: Log 1 (not shown in this PR): 2 lines, 29 bytes, complete") {
 		t.Fatalf("expected the repository log summarized, got:\n%s", md)
 	}
 	assertNoneOf(t, md, "POST /checkout", "receipt=ok", "artifacts/server.log", "github.com/example/widgets/blob", "```")
@@ -1047,7 +1047,7 @@ func TestBuildTestingSummaryForPR_LargeLogSummarizesWithoutContent(t *testing.T)
 
 	md := testingSummaryFor(t, raw, t.TempDir(), evidenceRoot, scm.ProviderGitHub)
 
-	want := fmt.Sprintf("- Evidence: Log 1 (kept local, not published): 101 lines, %d bytes, complete; phases: ready 0, error 50, warning 0, shutdown 0", len(fileBody))
+	want := fmt.Sprintf("- Evidence: Log 1 (not shown in this PR): 101 lines, %d bytes, complete; phases: ready 0, error 50, warning 0, shutdown 0", len(fileBody))
 	if !strings.Contains(md, want) {
 		t.Fatalf("expected %q, got:\n%s", want, md)
 	}
@@ -1070,7 +1070,7 @@ func TestBuildTestingSummaryForPR_EveryLogSummarizesIndependently(t *testing.T) 
 	md := testingSummaryFor(t, raw, t.TempDir(), evidenceRoot, scm.ProviderGitHub)
 
 	for _, n := range []string{"1", "2", "3"} {
-		if !strings.Contains(md, "- Evidence: Log "+n+" (kept local, not published): 700 lines, ") {
+		if !strings.Contains(md, "- Evidence: Log "+n+" (not shown in this PR): 700 lines, ") {
 			t.Fatalf("expected Log %s summarized, got:\n%s", n, md)
 		}
 	}
@@ -1105,9 +1105,9 @@ func TestBuildTestingSummaryForPR_TerminalAndUndeclaredMediaAreWithheld(t *testi
 	md := testingSummaryFor(t, raw, t.TempDir(), evidenceRoot, scm.ProviderGitHub)
 
 	for _, want := range []string{
-		"- Evidence: Image 1 (kept local, not published: terminal capture)",
-		"- Evidence: Image 2 (kept local, not published: content not declared)",
-		"- Evidence: Video 1 (kept local, not published: terminal capture)",
+		"- Evidence: Image 1 (not shown in this PR: terminal capture)",
+		"- Evidence: Image 2 (not shown in this PR: content not declared)",
+		"- Evidence: Video 1 (not shown in this PR: terminal capture)",
 	} {
 		if !strings.Contains(md, want) {
 			t.Fatalf("expected %q, got:\n%s", want, md)
@@ -1125,7 +1125,7 @@ func TestBuildTestingSummaryForPR_TextQuotesAreCheckedAtRender(t *testing.T) {
 	if !strings.Contains(md, "<summary>Evidence: Heading</summary>") || !strings.Contains(md, "```text\n## Done\n```") {
 		t.Fatalf("expected the clean quote inline, got:\n%s", md)
 	}
-	if !strings.Contains(md, "- Evidence: Quote 2 (kept local, not published: quote refused by the publication check)") {
+	if !strings.Contains(md, "- Evidence: Quote 2 (not shown in this PR: quote refused by the publication check)") {
 		t.Fatalf("expected the unsafe stored quote withheld, got:\n%s", md)
 	}
 	assertNoneOf(t, md, syntheticServerLogValues...)

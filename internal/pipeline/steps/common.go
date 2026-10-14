@@ -267,8 +267,8 @@ var testFindingsSchema = json.RawMessage(`{
 			"items": {
 				"type": "object",
 				"properties": {
-					"kind": {"type": "string", "enum": ["log", "text-quote", "image", "video"], "description": "log: a local log or command-output file, kept local and never published - the pull request shows only a line and byte summary of it; text-quote: a short excerpt shown inline, set in content; image or video: media, which must declare shows"},
-					"shows": {"type": "string", "enum": ["ui", "chart", "terminal"], "description": "image and video only: what the media shows. ui and chart media are published; terminal captures (a screenshot or recording of a terminal or log) are kept local like a log"},
+					"kind": {"type": "string", "enum": ["log", "text-quote", "image", "video"], "description": "log: a local log or command-output file whose bytes are not shown in the pull request - the pull request shows only a line and byte summary of it; text-quote: a short excerpt shown inline, set in content; image or video: media, which must declare shows"},
+					"shows": {"type": "string", "enum": ["ui", "chart", "terminal"], "description": "image and video only: what the media shows. ui and chart media are shown in the pull request; terminal captures (a screenshot or recording of a terminal or log) are not shown in the pull request"},
 					"label": {"type": "string", "description": "short description of the evidence, without paths, endpoints, or identifiers"},
 					"path": {"type": "string", "description": "artifact file path for a log, image, or video: repository-relative for a file inside the repository, or the full path to the file in this run's evidence directory for an evidence file. Do not report a path from anywhere else on the machine."},
 					"url": {"type": "string", "description": "image or video URL when available"},

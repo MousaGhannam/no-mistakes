@@ -701,7 +701,7 @@ func renderTestingArtifact(pub testartifact.Publication, opts testingSummaryOpti
 	case pub.Log != nil:
 		return renderLogSummaryLine(label, *pub.Log)
 	case pub.Withheld != "":
-		return fmt.Sprintf("- Evidence: %s (kept local, not published: %s)\n", html.EscapeString(label), pub.Withheld)
+		return fmt.Sprintf("- Evidence: %s (not shown in this PR: %s)\n", html.EscapeString(label), pub.Withheld)
 	case pub.Quote != "":
 		return renderTestingQuote(label, pub.Quote, opts)
 	case pub.Media != nil:
@@ -726,7 +726,7 @@ func renderLogSummaryLine(label string, summary testartifact.LogSummary) string 
 	for _, phase := range summary.Phases {
 		phases = append(phases, fmt.Sprintf("%s %d", phase.Phase, phase.Lines))
 	}
-	return fmt.Sprintf("- Evidence: %s (kept local, not published): %d %s, %d %s, %s; phases: %s\n",
+	return fmt.Sprintf("- Evidence: %s (not shown in this PR): %d %s, %d %s, %s; phases: %s\n",
 		html.EscapeString(label), summary.Lines, lines, summary.Bytes, bytesWord, summary.Outcome, strings.Join(phases, ", "))
 }
 
