@@ -82,15 +82,18 @@ func TestValidate_KindsAndPostures(t *testing.T) {
 		{name: "quote with an attestation", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "<!-- no-mistakes-pipeline-attestation:v1 {} -->"}, want: []string{"PR structure (attestation-marker)"}},
 		{name: "quote with an appendix marker", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "<!-- /no-mistakes-pr-appendix:v1 -->"}, want: []string{"PR structure (appendix-marker)"}},
 		{name: "quote with a closing reference", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "Closes #42"}, want: []string{"PR structure (closing-reference)"}},
+		{name: "quote with a tabbed closing reference", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "Fixes\t#42"}, want: []string{"PR structure (closing-reference)"}},
 		{name: "quote with a secret label", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticSecret}, want: []string{"artifact 1: text-quote content contains value-shaped text (", "credential"}},
 		{name: "quote with a home path", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticHomePath}, want: []string{"absolute-path"}},
 		{name: "quote with a custom rooted path", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "Saved /custom/acme/private/report.txt"}, want: []string{"absolute-path"}},
+		{name: "quote with a forward-slash Windows path", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "Saved C:/Users/alice/private/report.txt"}, want: []string{"absolute-path"}},
 		{name: "quote with a patient identifier", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "patient_id=12345"}, want: []string{"private-identifier"}},
 		{name: "quote with an endpoint", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticEndpoint}, want: []string{"endpoint"}},
 		{name: "quote with a pid", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticPID}, want: []string{"process-id"}},
 		{name: "quote with a run id", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticRunID}, want: []string{"run-id"}},
 		{name: "quote with a uuid", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticUUID}, want: []string{"uuid"}},
 		{name: "media label with an endpoint", artifact: types.TestArtifact{Kind: "image", Shows: "ui", Label: "Page at localhost:3000", Path: "/evidence/a.png"}, want: []string{"artifact 1: label contains value-shaped text (endpoint)"}},
+		{name: "media label with a forward-slash Windows path", artifact: types.TestArtifact{Kind: "image", Shows: "ui", Label: "Saved C:/Users/alice/private/report.txt", Path: "/evidence/a.png"}, want: []string{"artifact 1: label contains value-shaped text (absolute-path)"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -340,6 +343,7 @@ func TestPublish_MediaPostures(t *testing.T) {
 		{Kind: "image", Shows: "terminal", Label: "Boot log screenshot " + syntheticEndpoint, Path: "/evidence/boot.png"},
 		{Kind: "screenshot", Label: "Undeclared legacy shot", Path: "/evidence/legacy.png"},
 		{Kind: "image", Shows: "ui", Label: "Shot of " + syntheticRunID, Path: "/evidence/ok.png"},
+		{Kind: "image", Shows: "ui", Label: "Saved C:/Users/alice/private/report.txt", Path: "/evidence/path.png"},
 	}
 	pubs := PublishAll(artifacts, allowAll)
 	if len(pubs) != len(artifacts) {
@@ -359,6 +363,9 @@ func TestPublish_MediaPostures(t *testing.T) {
 	}
 	if pubs[4].Media == nil || pubs[4].Label != "Image 4" {
 		t.Fatalf("ui image with a value-shaped label = %+v, want media under a machine label", pubs[4])
+	}
+	if pubs[5].Media == nil || pubs[5].Label != "Image 5" {
+		t.Fatalf("ui image with a forward-slash Windows path label = %+v, want media under a machine label", pubs[5])
 	}
 	encoded, _ := json.Marshal(pubs)
 	assertNoSyntheticValue(t, string(encoded))
@@ -414,7 +421,9 @@ func TestPublish_StoredQuotesWithPRStructureAreWithheld(t *testing.T) {
 		{Kind: KindTextQuote, Content: "<!-- no-mistakes-pipeline-attestation:v1 {} -->"},
 		{Kind: KindTextQuote, Content: "<!-- no-mistakes-pr-appendix:v1 sha256=x -->"},
 		{Kind: KindTextQuote, Content: "Closes #42"},
+		{Kind: KindTextQuote, Content: "Fixes\t#42"},
 		{Kind: KindTextQuote, Content: "Saved /custom/acme/private/report.txt"},
+		{Kind: KindTextQuote, Content: "Saved C:/Users/alice/private/report.txt"},
 		{Kind: KindTextQuote, Content: "patient_id=12345"},
 	}
 	pubs := PublishAll(artifacts, allowAll)
@@ -510,6 +519,7 @@ func TestHazards_ClassesArePinned(t *testing.T) {
 		{"saved /custom/acme/private/report.txt", []string{HazardAbsolutePath}},
 		{"opened /Users/example/notes.txt", []string{HazardAbsolutePath}},
 		{`opened C:\Users\example\notes.txt`, []string{HazardAbsolutePath}},
+		{"opened C:/Users/example/notes.txt", []string{HazardAbsolutePath}},
 		{"opened ~/notes.txt", []string{HazardAbsolutePath}},
 		{"listening on 127.0.0.1", []string{HazardEndpoint}},
 		{"listening on [::1]", []string{HazardEndpoint}},

@@ -32,7 +32,7 @@ var hazardMatchers = []struct {
 	re    *regexp.Regexp
 }{
 	{HazardCredential, regexp.MustCompile(`(?i)\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|authorization|auth|cookie|credentials?)\b["']?\s*[:=]|(?i)\bbearer\s+\S|-----BEGIN [A-Z ]*PRIVATE KEY-----`)},
-	{HazardAbsolutePath, regexp.MustCompile(`(?i)(^|[^a-z0-9_.~-])/(?:[a-z0-9._~-]+/)+[a-z0-9._~-]+|(^|[^a-z0-9_.-])~/|\b[a-z]:\\|file://`)},
+	{HazardAbsolutePath, regexp.MustCompile(`(?i)(^|[^a-z0-9_.~-])/(?:[a-z0-9._~-]+/)+[a-z0-9._~-]+|(^|[^a-z0-9_.-])~/|\b[a-z]:[\\/]|file://`)},
 	{HazardEndpoint, regexp.MustCompile(`(?i)\b(localhost|0\.0\.0\.0)\b|\[::1?\]|\b\d{1,3}(\.\d{1,3}){3}\b|\b[a-z][a-z0-9+.-]*://|\b[a-z][a-z0-9-]*(\.[a-z0-9-]+)*:\d{4,5}\b`)},
 	{HazardProcessID, regexp.MustCompile(`(?i)\bpid\s*[:=#]?\s*\d+`)},
 	{HazardRunID, regexp.MustCompile(`\b[0-9A-HJKMNP-TV-Z]{26}\b`)},
@@ -44,7 +44,7 @@ var hazardMatchers = []struct {
 var (
 	tokenCandidate            = regexp.MustCompile(`[A-Za-z0-9+/_=-]{24,}`)
 	appendixMarkerCandidate   = regexp.MustCompile(`(?i)<!--\s*/?\s*no-mistakes-pr-appendix`)
-	closingReferenceCandidate = regexp.MustCompile(`(?i)\b(?:clos(?:e[sd]?|ing)|fix(?:e[sd]|ing)?|resolv(?:e[sd]?|ing)|implement(?:s|ed|ing)?):? +`)
+	closingReferenceCandidate = regexp.MustCompile(`(?i)\b(?:clos(?:e[sd]?|ing)|fix(?:e[sd]|ing)?|resolv(?:e[sd]?|ing)|implement(?:s|ed|ing)?):?\s+`)
 )
 
 // Hazards returns the classes of value-shaped text found in s, in a fixed
