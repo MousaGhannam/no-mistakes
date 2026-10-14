@@ -19,6 +19,11 @@ const (
 	HazardHexToken          = "hex-token"
 	HazardToken             = "token"
 	HazardPrivateIdentifier = "private-identifier"
+
+	HazardMarkdownFence    = "markdown-fence"
+	HazardFoldMarker       = "fold-marker"
+	HazardAttestation      = "attestation-marker"
+	HazardAppendixMarker   = "appendix-marker"
 )
 
 var hazardMatchers = []struct {
@@ -35,7 +40,10 @@ var hazardMatchers = []struct {
 	{HazardPrivateIdentifier, regexp.MustCompile(`(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b|\b(dob|date[ _-]of[ _-]birth|pat_?num|ssn|mrn)\b`)},
 }
 
-var tokenCandidate = regexp.MustCompile(`[A-Za-z0-9+/_=-]{24,}`)
+var (
+	tokenCandidate          = regexp.MustCompile(`[A-Za-z0-9+/_=-]{24,}`)
+	appendixMarkerCandidate = regexp.MustCompile(`(?i)<!--\s*/?\s*no-mistakes-pr-appendix`)
+)
 
 // Hazards returns the classes of value-shaped text found in s, in a fixed
 // order and without duplicates. It never returns the matched text.
@@ -54,6 +62,26 @@ func Hazards(s string) []string {
 			classes = append(classes, HazardToken)
 			break
 		}
+	}
+	return classes
+}
+
+func quoteStructureHazards(s string) []string {
+	var classes []string
+	if strings.Contains(s, "```") {
+		classes = append(classes, HazardMarkdownFence)
+	}
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(line, "### ") || strings.HasPrefix(line, "<details>") {
+			classes = append(classes, HazardFoldMarker)
+			break
+		}
+	}
+	if strings.Contains(s, "<!-- no-mistakes-pipeline-attestation:v1 ") {
+		classes = append(classes, HazardAttestation)
+	}
+	if appendixMarkerCandidate.MatchString(s) {
+		classes = append(classes, HazardAppendixMarker)
 	}
 	return classes
 }

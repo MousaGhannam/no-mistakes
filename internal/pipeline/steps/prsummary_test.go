@@ -609,24 +609,16 @@ func TestBuildTestingSummary_RejectsUnsafeArtifactTargets(t *testing.T) {
 	}
 }
 
-func TestBuildTestingSummary_ArtifactContentCannotSpoofFoldBoundary(t *testing.T) {
+func TestRenderTestingArtifact_DefensivelyEscapesFoldBoundary(t *testing.T) {
 	t.Parallel()
-	findings := `{"findings":[],"summary":"","testing_summary":"Evidence was collected.","artifacts":[{"kind":"text-quote","label":"Server log","content":"line one\n### Fake Heading\nline two"}]}`
-	steps := []*db.StepResult{
-		{ID: "s1", StepName: types.StepTest, Status: types.StepStatusCompleted, FindingsJSON: &findings},
-	}
-	rounds := map[string][]*db.StepRound{
-		"s1": {{Round: 1, Trigger: "initial", FindingsJSON: &findings, DurationMS: 300}},
-	}
+	md := renderTestingArtifact(testartifact.Publication{
+		Kind:  testartifact.KindTextQuote,
+		Label: "Quote",
+		Quote: "line one\n### Fake Heading\nline two",
+	}, testingSummaryOptions{})
 
-	md := BuildTestingSummary(steps, rounds)
-	t.Logf("rendered testing markdown:\n%s", md)
-
-	if strings.Contains(md, "\n### Fake Heading") {
-		t.Fatalf("embedded artifact content was not escaped, spoofs the PR-body fold-boundary marker:\n%s", md)
-	}
-	if !strings.Contains(md, "line one") || !strings.Contains(md, "line two") {
-		t.Fatalf("expected the artifact content to stay intact:\n%s", md)
+	if strings.Contains(md, "\n### Fake Heading") || !strings.Contains(md, "\n\\### Fake Heading") {
+		t.Fatalf("direct publication was not defensively escaped:\n%s", md)
 	}
 }
 
@@ -652,11 +644,11 @@ func TestBuildTestingSummaryForPR_ArtifactContentCannotSpoofFoldBoundary(t *test
 			md := BuildTestingSummaryForPRWithProvider(steps, rounds, "https://github.com/example/widgets.git", "abc123", t.TempDir(), "", nil, tc.provider)
 			t.Logf("rendered PR testing markdown:\n%s", md)
 
-			if strings.Contains(md, "\n### Fake Heading") {
-				t.Fatalf("embedded artifact content was not escaped, spoofs the PR-body fold-boundary marker:\n%s", md)
+			if strings.Contains(md, "Fake Heading") || strings.Contains(md, "line one") || strings.Contains(md, "line two") {
+				t.Fatalf("structural stored quote reached the PR body:\n%s", md)
 			}
-			if !strings.Contains(md, "line one") || !strings.Contains(md, "line two") {
-				t.Fatalf("expected the artifact content to stay intact:\n%s", md)
+			if !strings.Contains(md, "quote refused by the publication check") {
+				t.Fatalf("expected the structural stored quote to be withheld:\n%s", md)
 			}
 		})
 	}

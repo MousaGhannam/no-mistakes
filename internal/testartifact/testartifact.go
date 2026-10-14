@@ -209,14 +209,18 @@ func artifactIssues(n int, a types.TestArtifact) []string {
 		if strings.TrimSpace(a.Path) != "" || strings.TrimSpace(a.URL) != "" {
 			issues = append(issues, fmt.Sprintf("artifact %d: text-quote is published from content alone - drop path and url, or report the file as a log", n))
 		}
-		if hasControlCharacters(normalizeQuote(a.Content)) {
+		quote := normalizeQuote(a.Content)
+		if hasControlCharacters(quote) {
 			issues = append(issues, fmt.Sprintf("artifact %d: text-quote content contains control characters - quote plain text only", n))
 		}
-		if quoteTooLong(a.Content) {
+		if quoteTooLong(quote) {
 			issues = append(issues, fmt.Sprintf("artifact %d: text-quote content is longer than %d bytes or %d lines - quote less, or report the file as a log", n, MaxQuoteBytes, MaxQuoteLines))
 		}
-		if classes := Hazards(a.Content); len(classes) > 0 {
+		if classes := Hazards(quote); len(classes) > 0 {
 			issues = append(issues, fmt.Sprintf("artifact %d: text-quote content contains value-shaped text (%s) - quote something else, or report the file as a log", n, strings.Join(classes, ", ")))
+		}
+		if classes := quoteStructureHazards(quote); len(classes) > 0 {
+			issues = append(issues, fmt.Sprintf("artifact %d: text-quote content contains PR structure (%s) - quote something else, or report the file as a log", n, strings.Join(classes, ", ")))
 		}
 	default:
 		switch {
@@ -263,7 +267,7 @@ func Canonicalize(a types.TestArtifact) types.TestArtifact {
 	case KindLog:
 		out.Path = a.Path
 	case KindTextQuote:
-		out.Content = a.Content
+		out.Content = normalizeQuote(a.Content)
 	default:
 		out.Path = a.Path
 		out.URL = a.URL
@@ -324,7 +328,7 @@ func publish(a types.TestArtifact, n int, resolve func(string) string) (Publicat
 		if quote == "" {
 			return Publication{}, false
 		}
-		if quoteTooLong(quote) || hasControlCharacters(quote) || len(Hazards(quote)) > 0 {
+		if quoteTooLong(quote) || hasControlCharacters(quote) || len(Hazards(quote)) > 0 || len(quoteStructureHazards(quote)) > 0 {
 			return Publication{Kind: KindTextQuote, Label: machine, Withheld: WithheldQuote}, true
 		}
 		return Publication{Kind: KindTextQuote, Label: publishableLabel(a.Label, machine), Quote: quote}, true
@@ -351,18 +355,9 @@ func publishableLabel(label, machine string) string {
 	return label
 }
 
-// normalizeQuote is the one rewrite a quote gets: CRLF line endings become LF
-// and blank lines (and trailing space) around the quote are dropped. The
-// first line's indentation is kept, because it is part of what was quoted.
+// normalizeQuote is the one rewrite a quote gets: CRLF line endings become LF.
 func normalizeQuote(content string) string {
-	content = strings.TrimRightFunc(strings.ReplaceAll(content, "\r\n", "\n"), unicode.IsSpace)
-	for {
-		line, rest, found := strings.Cut(content, "\n")
-		if !found || strings.TrimSpace(line) != "" {
-			return content
-		}
-		content = rest
-	}
+	return strings.ReplaceAll(content, "\r\n", "\n")
 }
 
 // hasControlCharacters reports a control character other than newline and

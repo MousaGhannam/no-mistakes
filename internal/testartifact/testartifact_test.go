@@ -76,7 +76,12 @@ func TestValidate_KindsAndPostures(t *testing.T) {
 		{name: "quote over the line cap", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: strings.Repeat("a\n", MaxQuoteLines+1)}, want: []string{"artifact 1: text-quote content is longer than"}},
 		{name: "quote with a JSON credential", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: `{"password":"short"}`}, want: []string{"credential"}},
 		{name: "quote with a control character", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "ok\x1b[31mred"}, want: []string{"artifact 1: text-quote content contains control characters"}},
-		{name: "quote with a secret label", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticSecret}, want: []string{"artifact 1: text-quote content contains value-shaped text (", "credential"}},
+		{name: "quote with a code fence", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "```text\nok\n```"}, want: []string{"PR structure (markdown-fence)"}},
+		{name: "quote with a fold heading", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "ok\n### Pipeline"}, want: []string{"PR structure (fold-marker)"}},
+		{name: "quote with a details fold", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "<details>\nok"}, want: []string{"PR structure (fold-marker)"}},
+		{name: "quote with an attestation", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "<!-- no-mistakes-pipeline-attestation:v1 {} -->"}, want: []string{"PR structure (attestation-marker)"}},
+		{name: "quote with an appendix marker", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "<!-- /no-mistakes-pr-appendix:v1 -->"}, want: []string{"PR structure (appendix-marker)"}},
+		{name: "quote with a secret label", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticSecret}, want: []string{"artifact 1: text-quote content contains value-shaped text (", "credential"}}
 		{name: "quote with a home path", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticHomePath}, want: []string{"absolute-path"}},
 		{name: "quote with an endpoint", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticEndpoint}, want: []string{"endpoint"}},
 		{name: "quote with a pid", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticPID}, want: []string{"process-id"}},
@@ -162,9 +167,9 @@ func TestCanonicalize_OneRepresentationAfterValidation(t *testing.T) {
 			want: types.TestArtifact{Kind: KindVideo, Shows: ShowsChart, Label: "Rec", URL: "https://example.com/a.mp4"},
 		},
 		{
-			name: "quote keeps only its content",
-			in:   types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "ok", Path: "/evidence/x", URL: "https://example.com", Shows: "ui"},
-			want: types.TestArtifact{Kind: KindTextQuote, Label: "Quote", Content: "ok"},
+			name: "quote keeps only its normalized content",
+			in:   types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "\n ok \r\n\r\n", Path: "/evidence/x", URL: "https://example.com", Shows: "ui"},
+			want: types.TestArtifact{Kind: KindTextQuote, Label: "Quote", Content: "\n ok \n\n"},
 		},
 	}
 	for _, tt := range tests {
@@ -372,8 +377,8 @@ func TestPublish_QuotesAreCappedAndScannedAtTheBoundary(t *testing.T) {
 	if len(pubs) != 6 {
 		t.Fatalf("PublishAll() = %+v", pubs)
 	}
-	if pubs[5].Quote != "    indented first line\n  second" {
-		t.Fatalf("indented quote = %q, want its indentation kept and only surrounding blank lines dropped", pubs[5].Quote)
+	if pubs[5].Quote != "\n  \n    indented first line\n  second  \n\n" {
+		t.Fatalf("indented quote = %q, want every byte kept apart from line endings", pubs[5].Quote)
 	}
 	if pubs[3].Quote != "{\"message\":\"Hello   world\"}\n\tindented" {
 		t.Fatalf("quote was rewritten: %q, want it verbatim apart from line endings", pubs[3].Quote)
@@ -395,6 +400,26 @@ func TestPublish_QuotesAreCappedAndScannedAtTheBoundary(t *testing.T) {
 	}
 	encoded, _ := json.Marshal(pubs)
 	assertNoSyntheticValue(t, string(encoded))
+}
+
+func TestPublish_StoredQuotesWithPRStructureAreWithheld(t *testing.T) {
+	t.Parallel()
+	artifacts := []types.TestArtifact{
+		{Kind: KindTextQuote, Content: "```text\nok\n```"},
+		{Kind: KindTextQuote, Content: "ok\n### Pipeline"},
+		{Kind: KindTextQuote, Content: "<details>\nok"},
+		{Kind: KindTextQuote, Content: "<!-- no-mistakes-pipeline-attestation:v1 {} -->"},
+		{Kind: KindTextQuote, Content: "<!-- no-mistakes-pr-appendix:v1 sha256=x -->"},
+	}
+	pubs := PublishAll(artifacts, allowAll)
+	if len(pubs) != len(artifacts) {
+		t.Fatalf("PublishAll() returned %d publications, want %d", len(pubs), len(artifacts))
+	}
+	for _, pub := range pubs {
+		if pub.Quote != "" || pub.Withheld != WithheldQuote {
+			t.Fatalf("structural quote = %+v, want withheld", pub)
+		}
+	}
 }
 
 // Fields the contract does not define never reach the publication, whatever

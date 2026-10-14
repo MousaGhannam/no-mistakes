@@ -286,7 +286,7 @@ Evidence:
 - Record the exact tests, manual checks, and evidence-producing steps you ran in a "tested" array. Prefer concrete commands or test selectors wrapped in backticks.
 - Always include an "artifacts" array. Leave it empty when you produced no reviewer-visible evidence artifacts. Give every artifact a kind:
   - kind "log" for a log or command-output file: set its path. A log is never published; the pull request shows only a line and byte summary of it, so it may hold anything you need locally.
-  - kind "text-quote" for a short excerpt to show inline: set content (at most 20 lines and 1024 bytes) and no path or url. It is refused if it contains a path, endpoint, process or run identifier, credential, or private identifier.
+  - kind "text-quote" for a short excerpt to show inline: set content (at most 20 lines and 1024 bytes) and no path or url. It is refused if it contains a path, endpoint, process or run identifier, credential, private identifier, code fence, PR fold heading, or no-mistakes attestation or appendix marker.
   - kind "image" or "video" for media: set its path or url and "shows" to "ui", "chart", or "terminal". Only ui and chart media are published; a terminal capture is kept local like a log.
 - If a scenario fails, determine whether the problem is a real product/code failure, a setup/environment problem you can fix, or a flaky/infrastructure issue.
 - If the issue is setup-related and fixable, fix it and re-drive that scenario.
