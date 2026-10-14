@@ -618,7 +618,7 @@ func appendTestingArtifacts(artifacts []types.TestArtifact, seen map[string]bool
 		// the evidence contract checks and fences it verbatim.
 		artifact.Shows = strings.ToLower(sanitizePromptText(artifact.Shows))
 		key := artifact.Kind + "\x00" + artifact.Shows + "\x00" + artifact.Label + "\x00" + artifact.Path + "\x00" + artifact.URL + "\x00" + artifact.Content
-		if artifact.Label == "" || seen[key] {
+		if seen[key] {
 			continue
 		}
 		if artifact.Path == "" && artifact.URL == "" && strings.TrimSpace(artifact.Content) == "" {

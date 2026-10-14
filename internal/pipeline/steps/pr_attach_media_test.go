@@ -277,6 +277,36 @@ func TestPRStep_TextArtifactIsNotUploaded(t *testing.T) {
 	}
 }
 
+func TestPRStep_BlankArtifactLabelsUseMachineLabels(t *testing.T) {
+	t.Parallel()
+	dir, baseSHA, headSHA := setupGitRepo(t)
+	sctx := newTestContextWithDBRecords(t, prDraftAgent(), dir, baseSHA, headSHA, config.Commands{})
+	enableDefaultEvidence(sctx)
+	logPath := writeEvidenceFile(t, sctx.EvidenceDir, "cli-run.txt", []byte("ready\n"))
+	imagePath := writeEvidenceFile(t, sctx.EvidenceDir, "checkout.png", []byte("png-bytes"))
+	findings := fmt.Sprintf(`{"findings":[],"summary":"","testing_summary":"Evidence was collected.","artifacts":[`+
+		`{"kind":"log","label":"","path":%q},`+
+		`{"kind":"image","shows":"ui","label":"","path":%q}]}`, logPath, imagePath)
+	insertCompletedStep(t, sctx, types.StepTest, findings, "")
+	uploader := &stubMediaUploader{t: t, urls: map[string]string{"checkout.png": testAttachmentURL}}
+
+	content, err := (&PRStep{mediaUploader: uploader}).buildPRContent(sctx, "feature", "main", baseSHA, scm.ProviderGitHub, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(uploader.calls) != 1 || filepath.Base(uploader.calls[0]) != "checkout.png" {
+		t.Fatalf("uploads = %v, want the blank-labelled image", uploader.calls)
+	}
+	for _, want := range []string{
+		"- Evidence: Log 1 (not shown in this PR): 1 line, 6 bytes",
+		"![Image 1](" + testAttachmentURL + ")",
+	} {
+		if !strings.Contains(content.Body, want) {
+			t.Fatalf("expected %q, got:\n%s", want, content.Body)
+		}
+	}
+}
+
 // Only media the typed evidence contract publishes is uploaded: a terminal
 // capture is a picture of a log, and media recorded before it had to declare
 // what it shows cannot be told apart from one, so neither ever leaves the
