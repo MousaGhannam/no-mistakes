@@ -272,7 +272,7 @@ var testFindingsSchema = json.RawMessage(`{
 					"label": {"type": "string", "description": "short description of the evidence, without paths, endpoints, or identifiers"},
 					"path": {"type": "string", "description": "artifact file path for a log, image, or video: repository-relative for a file inside the repository, or the full path to the file in this run's evidence directory for an evidence file. Do not report a path from anywhere else on the machine."},
 					"url": {"type": "string", "description": "image or video URL when available"},
-					"content": {"type": "string", "description": "text-quote only: the short excerpt to show inline, at most 20 lines and 1024 bytes, with no paths, endpoints, identifiers, credentials, code fences, PR fold headings, or no-mistakes attestation or appendix markers"}
+					"content": {"type": "string", "description": "text-quote only: the short excerpt to show inline, at most 20 lines and 1024 bytes, with no paths, endpoints, identifiers, credentials, provider closing references, code fences, PR fold headings, or no-mistakes attestation or appendix markers"}
 				},
 				"required": ["kind", "label"]
 			}

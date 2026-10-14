@@ -731,7 +731,12 @@ func renderLogSummaryLine(label string, summary testartifact.LogSummary) string 
 }
 
 func renderTestingQuote(label, quote string, opts testingSummaryOptions) string {
-	fence := fmt.Sprintf("```text\n%s\n```\n", escapeMarkdownFence(escapePipelineFoldMarkers(quote)))
+	quote = escapeMarkdownFence(escapePipelineFoldMarkers(quote))
+	separator := ""
+	if !strings.HasSuffix(quote, "\n") {
+		separator = "\n"
+	}
+	fence := "```text\n" + quote + separator + "```\n"
 	if opts.compactArtifacts {
 		return foldPRBlock("Evidence: "+html.EscapeString(label), fence, opts.flavor)
 	}

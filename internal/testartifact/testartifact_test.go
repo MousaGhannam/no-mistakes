@@ -81,8 +81,11 @@ func TestValidate_KindsAndPostures(t *testing.T) {
 		{name: "quote with a details fold", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "<details>\nok"}, want: []string{"PR structure (fold-marker)"}},
 		{name: "quote with an attestation", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "<!-- no-mistakes-pipeline-attestation:v1 {} -->"}, want: []string{"PR structure (attestation-marker)"}},
 		{name: "quote with an appendix marker", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "<!-- /no-mistakes-pr-appendix:v1 -->"}, want: []string{"PR structure (appendix-marker)"}},
-		{name: "quote with a secret label", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticSecret}, want: []string{"artifact 1: text-quote content contains value-shaped text (", "credential"}}
+		{name: "quote with a closing reference", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "Closes #42"}, want: []string{"PR structure (closing-reference)"}},
+		{name: "quote with a secret label", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticSecret}, want: []string{"artifact 1: text-quote content contains value-shaped text (", "credential"}},
 		{name: "quote with a home path", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticHomePath}, want: []string{"absolute-path"}},
+		{name: "quote with a custom rooted path", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "Saved /custom/acme/private/report.txt"}, want: []string{"absolute-path"}},
+		{name: "quote with a patient identifier", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: "patient_id=12345"}, want: []string{"private-identifier"}},
 		{name: "quote with an endpoint", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticEndpoint}, want: []string{"endpoint"}},
 		{name: "quote with a pid", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticPID}, want: []string{"process-id"}},
 		{name: "quote with a run id", artifact: types.TestArtifact{Kind: "text-quote", Label: "Quote", Content: syntheticRunID}, want: []string{"run-id"}},
@@ -410,6 +413,9 @@ func TestPublish_StoredQuotesWithPRStructureAreWithheld(t *testing.T) {
 		{Kind: KindTextQuote, Content: "<details>\nok"},
 		{Kind: KindTextQuote, Content: "<!-- no-mistakes-pipeline-attestation:v1 {} -->"},
 		{Kind: KindTextQuote, Content: "<!-- no-mistakes-pr-appendix:v1 sha256=x -->"},
+		{Kind: KindTextQuote, Content: "Closes #42"},
+		{Kind: KindTextQuote, Content: "Saved /custom/acme/private/report.txt"},
+		{Kind: KindTextQuote, Content: "patient_id=12345"},
 	}
 	pubs := PublishAll(artifacts, allowAll)
 	if len(pubs) != len(artifacts) {
@@ -501,6 +507,7 @@ func TestHazards_ClassesArePinned(t *testing.T) {
 		{"Authorization: Bearer synthetic", []string{HazardCredential}},
 		{"-----BEGIN OPENSSH PRIVATE KEY-----", []string{HazardCredential}},
 		{"opened /home/example-user/notes.txt", []string{HazardAbsolutePath}},
+		{"saved /custom/acme/private/report.txt", []string{HazardAbsolutePath}},
 		{"opened /Users/example/notes.txt", []string{HazardAbsolutePath}},
 		{`opened C:\Users\example\notes.txt`, []string{HazardAbsolutePath}},
 		{"opened ~/notes.txt", []string{HazardAbsolutePath}},
@@ -514,6 +521,8 @@ func TestHazards_ClassesArePinned(t *testing.T) {
 		{"cookie value c2VjcmV0LXN5bnRoZXRpYy12YWx1ZTEyMzQ", []string{HazardToken}},
 		{"mail example.person@example.com", []string{HazardPrivateIdentifier}},
 		{"PatNum 12 DOB unknown", []string{HazardPrivateIdentifier}},
+		{"patient_id=12345", []string{HazardPrivateIdentifier}},
+		{`{"user-id":"abc-123"}`, []string{HazardPrivateIdentifier}},
 	}
 	for _, tt := range tests {
 		if got := Hazards(tt.text); !reflect.DeepEqual(got, tt.want) {

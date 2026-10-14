@@ -622,6 +622,45 @@ func TestRenderTestingArtifact_DefensivelyEscapesFoldBoundary(t *testing.T) {
 	}
 }
 
+func TestRenderTestingArtifact_PreservesTerminalNewline(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		quote string
+		want  string
+	}{
+		{name: "without terminal newline", quote: "line", want: "```text\nline\n```\n"},
+		{name: "with terminal newline", quote: "line\n", want: "```text\nline\n```\n"},
+		{name: "with two terminal newlines", quote: "line\n\n", want: "```text\nline\n\n```\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := renderTestingArtifact(testartifact.Publication{Kind: testartifact.KindTextQuote, Label: "Quote", Quote: tc.quote}, testingSummaryOptions{})
+			if !strings.HasSuffix(got, tc.want) {
+				t.Fatalf("rendered quote = %q, want suffix %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildTestingSummaryForPR_ClosingReferencesAreWithheldBeforeAssembly(t *testing.T) {
+	t.Parallel()
+	findings := `{"findings":[],"summary":"","testing_summary":"Evidence was collected.","artifacts":[{"kind":"text-quote","label":"Issue result","content":"Closes #42"}]}`
+	steps := []*db.StepResult{{ID: "s1", StepName: types.StepTest, Status: types.StepStatusCompleted, FindingsJSON: &findings}}
+	rounds := map[string][]*db.StepRound{"s1": {{Round: 1, Trigger: "initial", FindingsJSON: &findings}}}
+
+	for _, provider := range []scm.Provider{scm.ProviderGitHub, scm.ProviderGitLab} {
+		testing := BuildTestingSummaryForPRWithProvider(steps, rounds, "", "", t.TempDir(), "", nil, provider)
+		body := appendGeneratedSectionsToCleanBody("", "", testing, "", provider)
+		if strings.Contains(body, "Closes #42") || strings.Contains(body, "Closes `#42`") || strings.Contains(body, "Closes&#32;#42") {
+			t.Fatalf("provider %q rewrote rather than withheld the quote:\n%s", provider, body)
+		}
+		if !strings.Contains(body, "quote refused by the publication check") {
+			t.Fatalf("provider %q did not report the withheld quote:\n%s", provider, body)
+		}
+	}
+}
+
 func TestBuildTestingSummaryForPR_ArtifactContentCannotSpoofFoldBoundary(t *testing.T) {
 	t.Parallel()
 	findings := `{"findings":[],"summary":"","testing_summary":"Evidence was collected.","artifacts":[{"kind":"text-quote","label":"Server log","content":"line one\n### Fake Heading\nline two"}]}`

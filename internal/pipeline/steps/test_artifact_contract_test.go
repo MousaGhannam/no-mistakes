@@ -142,7 +142,7 @@ func TestTestFindingsSchema_DeclaresTheArtifactContract(t *testing.T) {
 			t.Fatalf("kind description %q missing %q", items.Properties["kind"].Description, want)
 		}
 	}
-	for _, want := range []string{"text-quote", "code fences", "attestation", "appendix"} {
+	for _, want := range []string{"text-quote", "closing references", "code fences", "attestation", "appendix"} {
 		if !strings.Contains(items.Properties["content"].Description, want) {
 			t.Fatalf("content description %q missing %q", items.Properties["content"].Description, want)
 		}
@@ -167,6 +167,7 @@ func TestTestStep_PromptDescribesTypedArtifacts(t *testing.T) {
 		`kind "log"`,
 		"never published",
 		`kind "text-quote"`,
+		"closing reference",
 		"code fence",
 		"attestation",
 		"appendix",
