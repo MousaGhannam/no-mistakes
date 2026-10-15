@@ -20,10 +20,10 @@ const (
 	HazardToken             = "token"
 	HazardPrivateIdentifier = "private-identifier"
 
-	HazardMarkdownFence     = "markdown-fence"
-	HazardFoldMarker        = "fold-marker"
-	HazardAttestation       = "attestation-marker"
-	HazardAppendixMarker    = "appendix-marker"
+	HazardMarkdownFence    = "markdown-fence"
+	HazardFoldMarker       = "fold-marker"
+	HazardAttestation      = "attestation-marker"
+	HazardAppendixMarker   = "appendix-marker"
 	HazardClosingReference = "closing-reference"
 )
 
