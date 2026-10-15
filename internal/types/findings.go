@@ -266,7 +266,7 @@ func NoLiveExercisableScenarios(scenarios []TestScenario) bool {
 // internal/testartifact owns what each kind means and what it may publish;
 // this is only the stored record. Shows is additive, so a record written
 // before it existed decodes with it empty, which that package treats as an
-// undeclared (unpublished) image or video.
+// undeclared image or video whose content is withheld from PR rendering.
 type TestArtifact struct {
 	Kind    string `json:"kind,omitempty"`
 	Label   string `json:"label"`
