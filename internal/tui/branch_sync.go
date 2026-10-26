@@ -63,7 +63,14 @@ func renderLocalBranchStatus(state *branchsync.State, refreshing bool, width int
 		case branchsync.StateTargetChanged:
 			message = "The configured push target changed after the pipeline push. Synchronization is blocked."
 		case branchsync.StateCustodyReturned:
-			message = "Custody returned; the branch is yours. Start a fresh run when ready."
+			switch {
+			case state.Safety == "replacement_recoverable":
+				message = "The recovered pipeline head is preserved by a verified archive. Move the stale gate lane to this replacement head with `no-mistakes axi sync --recover --keep-local`."
+			case state.NextAction != nil && state.NextAction.Code == "inspect_and_reconcile_manually":
+				message = "This replacement head diverges from the recovered pipeline head. Inspect `no-mistakes axi status` before starting a fresh run."
+			default:
+				message = "Custody returned; the branch is yours. Start a fresh run when ready."
+			}
 		case branchsync.StateUserOwned:
 			message = "Run ended before the pipeline changed anything; the branch and head are yours and immediately usable."
 		default:

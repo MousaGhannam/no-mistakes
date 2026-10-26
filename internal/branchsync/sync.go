@@ -525,16 +525,21 @@ func (s *Service) Apply(ctx context.Context) State {
 
 // BindRecoveryArchive records one exact existing archive ref as recovery
 // evidence for the currently selected terminal run. It never creates, moves,
-// or deletes a Git ref. The record is useful only for the narrow keep-local
-// recovery where the clean worktree remains at an exact submitted, reviewed,
-// or successfully pushed head and the archived later head is divergent.
+// or deletes a Git ref. The record is useful only for two narrow keep-local
+// recoveries whose archived head is divergent: before custody returns, where
+// the clean worktree remains at an exact submitted, reviewed, or successfully
+// pushed head; and after custody returned for a never-pushed run, where the
+// clean worktree is at the operator's replacement head (bindReplacementArchive).
 func (s *Service) BindRecoveryArchive(ctx context.Context, archiveRef string) State {
 	if refusal, blocked := s.gateContextRefusal(ctx); blocked {
 		return refusal
 	}
 	state, run, _ := s.inspect(ctx)
+	if run != nil && state.State == StateCustodyReturned && run.CustodyReturnedAt != nil {
+		return s.bindReplacementArchive(ctx, state, run, archiveRef)
+	}
 	if run == nil || state.State != StatePipelineOwned || !terminalRunStatus(run.Status) || !unpublishedPipelineHead(run) || run.CustodyReturnedAt != nil {
-		return blockedPlan(state, state.State, "blocked_recover_archive_not_applicable", "an archive can be bound only to the selected terminal run that still owns an unpublished pipeline head; no files or refs were changed")
+		return blockedPlan(state, state.State, "blocked_recover_archive_not_applicable", "an archive can be bound only to the selected terminal run that still owns an unpublished pipeline head, or to a never-pushed custody-returned run whose clean replacement head diverges from its recovered head; no files or refs were changed")
 	}
 	if run.TerminalHeadVerifiedAt == nil {
 		return blockedPlan(state, StatePipelineOwned, "blocked_recover_archive_unverified_head", "the terminal run has no verified final-head evidence, so an archive cannot be bound; no files or refs were changed")
@@ -574,6 +579,58 @@ func (s *Service) BindRecoveryArchive(ctx context.Context, archiveRef string) St
 	}
 	if _, err := s.DB.RecordRecoveryArchive(*record); err != nil {
 		return blockedPlan(state, StatePipelineOwned, "blocked_recover_archive_record_failed", fmt.Sprintf("the verified archive ref %s could not be recorded: %v; no files or refs were changed", record.ArchiveRef, err))
+	}
+	verified, _, _ := s.inspect(ctx)
+	return verified
+}
+
+// bindReplacementArchive records the operator's authorization for one exact
+// replacement head on a never-pushed custody-returned branch whose clean local
+// head diverges from the recovered pipeline head. The archive must already pin
+// that recovered head, so binding it is what proves the obsolete head stays
+// preserved while the replacement takes its place; the binding names the
+// replacement exactly and authorizes nothing else. It changes no Git ref.
+func (s *Service) bindReplacementArchive(ctx context.Context, state State, run *db.Run, archiveRef string) State {
+	if !terminalRunStatus(run.Status) || run.LastPushedSHA != nil || run.SubmittedHeadSHA == nil || runHeadUnmoved(run) {
+		return blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_not_applicable", "after custody returned, an archive can be bound only for a never-pushed run whose pipeline head moved; no files or refs were changed")
+	}
+	if run.TerminalHeadVerifiedAt == nil {
+		return blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_unverified_head", "the terminal run has no verified final-head evidence, so an archive cannot be bound; no files or refs were changed")
+	}
+	if !state.Local.Clean {
+		return blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_dirty", "the working tree must be clean before archive recovery evidence can be bound; no files or refs were changed")
+	}
+	if state.Relation != RelationDiverged {
+		return blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_not_divergent", "a replacement archive applies only when the clean local head diverges from the recovered pipeline head; no files or refs were changed")
+	}
+	if state.Safety == "gate_ready" {
+		return blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_not_applicable", "the gate lane already holds the local head, so no archive is needed to start a fresh run; no files or refs were changed")
+	}
+
+	record := &db.RecoveryArchive{
+		OwnerRunID: run.ID, RepoID: s.Repo.ID, RunID: run.ID, Branch: run.Branch,
+		RequiredHeadSHA: state.Local.Head, PreservedHeadSHA: run.HeadSHA, ArchiveRef: archiveRef,
+	}
+	records, err := s.DB.GetRecoveryArchivesByRun(run.ID)
+	if err != nil {
+		return blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_record_unreadable", "recovery archive records could not be read; no files or refs were changed")
+	}
+	if len(records) > 0 {
+		if len(records) == 1 && sameRecoveryArchive(records[0], record) {
+			verified, _, _ := s.inspect(ctx)
+			return verified
+		}
+		return blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_ambiguous", fmt.Sprintf("run %s already has %d recovery archive record(s); refusing to add another candidate; no files or refs were changed", run.ID, len(records)))
+	}
+	proof := s.verifyArchiveRecord(ctx, &state, run, record, true)
+	if !proof.available {
+		if proof.evidence != nil {
+			proof.evidence.Source = "archive_candidate"
+		}
+		return proof.applyReplacement(state)
+	}
+	if _, err := s.DB.RecordRecoveryArchive(*record); err != nil {
+		return blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_record_failed", fmt.Sprintf("the verified archive ref %s could not be recorded: %v; no files or refs were changed", record.ArchiveRef, err))
 	}
 	verified, _, _ := s.inspect(ctx)
 	return verified
@@ -684,6 +741,13 @@ func (s *Service) Recover(ctx context.Context, keepLocal bool) State {
 		return rebound
 	}
 	if run != nil && run.CustodyReturnedAt != nil {
+		// A bound replacement archive is the one returned-custody state with a
+		// remaining recovery step: moving the stale gate lane to the exact
+		// replacement head it authorizes. Every other returned state is an
+		// idempotent no-op.
+		if state.State == StateCustodyReturned && state.Recovery != nil && state.Recovery.Source == "bound_archive" {
+			return s.recoverReplacementLane(ctx, run, state, keepLocal)
+		}
 		state.Recovered = true
 		state.Changed = false
 		return state
@@ -1176,40 +1240,8 @@ func (s *Service) recoverKeepLocalFromArchive(ctx context.Context, run *db.Run, 
 	state.Recovery = proof.evidence
 	gateMoved := false
 	if gateHead != state.Local.Head {
-		if gateHead != run.HeadSHA {
-			gateAnchor := custody.RecoveryGateRef(run.ID)
-			existing, exists, err := git.ExactRefTarget(ctx, s.GateDir, gateAnchor)
-			if err != nil || (exists && existing != gateHead) {
-				return blockedPlan(state, StatePipelineOwned, "blocked_recover_preserve_failed", "the independently moved gate head conflicts with the existing run recovery anchor; inspect both refs before returning custody; no files or branch refs were changed")
-			}
-			if !exists {
-				err = custody.PreserveRecoveryAnchor(ctx, s.GateDir, gateAnchor, gateHead)
-			}
-			if err != nil {
-				return blockedPlan(state, StatePipelineOwned, "blocked_recover_preserve_failed", "the independently moved gate head could not be anchored before returning custody; no files or branch refs were changed")
-			}
-		}
-		head, err := git.HeadSHA(ctx, s.workDir())
-		if err != nil || head != state.Local.Head {
-			return blockedPlan(state, StatePipelineOwned, "blocked_recover_assumptions_changed", "the local branch head changed while custody was being returned; no files or refs were changed")
-		}
-		source, err := filepath.Abs(s.workDir())
-		if err != nil {
-			return blockedPlan(state, StatePipelineOwned, "blocked_recover_assumptions_changed", "the invoking worktree path could not be resolved; no files or refs were changed")
-		}
-		stagingRef := "refs/no-mistakes/custody-return/" + run.ID
-		if _, err := git.Run(ctx, s.GateDir, "fetch", "--no-tags", "--no-write-fetch-head", source, "+refs/heads/"+state.Local.Branch+":"+stagingRef); err != nil {
-			return blockedPlan(state, StatePipelineOwned, "blocked_recover_assumptions_changed", "the kept local head could not be staged into the gate; no files or refs were changed")
-		}
-		staged, err := git.Run(ctx, s.GateDir, "rev-parse", stagingRef+"^{commit}")
-		if err != nil || staged != state.Local.Head {
-			_, _ = git.Run(ctx, s.GateDir, "update-ref", "-d", stagingRef)
-			return blockedPlan(state, StatePipelineOwned, "blocked_recover_assumptions_changed", "the local branch head changed while custody was being returned; no files or refs were changed")
-		}
-		_, casErr := git.Run(ctx, s.GateDir, "update-ref", "refs/heads/"+state.Local.Branch, state.Local.Head, gateHead)
-		_, _ = git.Run(ctx, s.GateDir, "update-ref", "-d", stagingRef)
-		if casErr != nil {
-			return blockedPlan(state, StatePipelineOwned, "blocked_recover_gate_race", "the gate branch changed while custody was being returned; re-run the recovery; no local files or refs were changed")
+		if safety, message := s.moveGateLaneToKeptHead(ctx, run, state.Local.Branch, state.Local.Head, gateHead); safety != "" {
+			return blockedPlan(state, StatePipelineOwned, safety, message)
 		}
 		gateMoved = true
 	}
@@ -1222,6 +1254,120 @@ func (s *Service) recoverKeepLocalFromArchive(ctx context.Context, run *db.Run, 
 			result.Error += "; the gate branch was restored to its exact pre-recovery head"
 		}
 	}
+	return result
+}
+
+// moveGateLaneToKeptHead points the gate lane at the clean kept local head
+// without a push, which would fire the receive hook and start a run. A lane
+// head other than the run's recorded head is first pinned under the run's
+// gate recovery ref, the kept head is staged through a private ref, and the
+// move is a compare-and-swap from gateHead, so a concurrent gate push wins. It
+// returns a refusal safety code and message, or empty strings once the lane
+// moved.
+func (s *Service) moveGateLaneToKeptHead(ctx context.Context, run *db.Run, branch, keptHead, gateHead string) (string, string) {
+	if gateHead != run.HeadSHA {
+		gateAnchor := custody.RecoveryGateRef(run.ID)
+		existing, exists, err := git.ExactRefTarget(ctx, s.GateDir, gateAnchor)
+		if err != nil || (exists && existing != gateHead) {
+			return "blocked_recover_preserve_failed", "the independently moved gate head conflicts with the existing run recovery anchor; inspect both refs before returning custody; no files or branch refs were changed"
+		}
+		if !exists {
+			err = custody.PreserveRecoveryAnchor(ctx, s.GateDir, gateAnchor, gateHead)
+		}
+		if err != nil {
+			return "blocked_recover_preserve_failed", "the independently moved gate head could not be anchored before returning custody; no files or branch refs were changed"
+		}
+	}
+	head, err := git.HeadSHA(ctx, s.workDir())
+	if err != nil || head != keptHead {
+		return "blocked_recover_assumptions_changed", "the local branch head changed while custody was being returned; no files or refs were changed"
+	}
+	source, err := filepath.Abs(s.workDir())
+	if err != nil {
+		return "blocked_recover_assumptions_changed", "the invoking worktree path could not be resolved; no files or refs were changed"
+	}
+	stagingRef := "refs/no-mistakes/custody-return/" + run.ID
+	if _, err := git.Run(ctx, s.GateDir, "fetch", "--no-tags", "--no-write-fetch-head", source, "+refs/heads/"+branch+":"+stagingRef); err != nil {
+		return "blocked_recover_assumptions_changed", "the kept local head could not be staged into the gate; no files or refs were changed"
+	}
+	staged, err := git.Run(ctx, s.GateDir, "rev-parse", stagingRef+"^{commit}")
+	if err != nil || staged != keptHead {
+		_, _ = git.Run(ctx, s.GateDir, "update-ref", "-d", stagingRef)
+		return "blocked_recover_assumptions_changed", "the local branch head changed while custody was being returned; no files or refs were changed"
+	}
+	_, casErr := git.Run(ctx, s.GateDir, "update-ref", "refs/heads/"+branch, keptHead, gateHead)
+	_, _ = git.Run(ctx, s.GateDir, "update-ref", "-d", stagingRef)
+	if casErr != nil {
+		return "blocked_recover_gate_race", "the gate branch changed while custody was being returned; re-run the recovery; no local files or refs were changed"
+	}
+	return "", ""
+}
+
+// recoverReplacementLane performs the keep-local step a verified replacement
+// archive offers on a custody-returned branch. It revalidates the binding and
+// the clean replacement head at the recovery boundary, then moves only the
+// stale gate lane to that head through moveGateLaneToKeptHead, which pins the
+// lane's previous head unless it is the already-anchored recovered head. The
+// worktree, the archive, and the recovered head are never touched, and custody
+// was already returned, so nothing is stamped. Plain --recover refuses.
+func (s *Service) recoverReplacementLane(ctx context.Context, run *db.Run, state State, keepLocal bool) State {
+	if state.Safety != "replacement_recoverable" {
+		state.Recovered = false
+		state.Changed = false
+		return state
+	}
+	if !keepLocal {
+		blocked := blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_requires_keep_local", fmt.Sprintf("recovered pipeline head %s is preserved at %s and replacement head %s diverges from it; run only the offered keep-local recovery; no files or refs were changed", state.Recovery.PreservedHead, state.Recovery.ArchiveRef, state.Recovery.RequiredHead))
+		blocked.Recovery = state.Recovery
+		blocked.NextAction = &NextAction{Code: "recover_custody", Command: "no-mistakes axi sync --recover --keep-local"}
+		return blocked
+	}
+	if s.beforeGateReset != nil {
+		s.beforeGateReset()
+	}
+	freshRun, err := s.DB.GetRun(run.ID)
+	if err != nil || freshRun == nil {
+		blocked := blockedPlan(state, StateCustodyReturned, "blocked_recover_assumptions_changed", "the custody-returned run could not be reloaded while the replacement lane was being recovered; no files or refs were changed")
+		blocked.Recovery = state.Recovery
+		return blocked
+	}
+	proof, claimed := s.replacementArchiveProof(ctx, &state, freshRun)
+	if !claimed {
+		return blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_record_missing", fmt.Sprintf("the recovery archive record for run %s is missing; no files or refs were changed", run.ID))
+	}
+	if !proof.available || proof.archive == nil {
+		return proof.applyReplacement(state)
+	}
+	archive := proof.archive
+	branch, branchErr := git.CurrentBranch(ctx, s.workDir())
+	head, headErr := git.HeadSHA(ctx, s.workDir())
+	clean, _ := worktreeClean(ctx, s.workDir())
+	if branchErr != nil || branch != archive.Branch || headErr != nil || head != archive.RequiredHeadSHA || !clean {
+		blocked := blockedPlan(state, StateCustodyReturned, "blocked_recover_assumptions_changed", "the replacement branch, head, or clean-worktree proof changed while the replacement lane was being recovered; no files or refs were changed")
+		blocked.Recovery = proof.evidence
+		return blocked
+	}
+	gateHead, exists, err := git.ExactRefTarget(ctx, s.GateDir, "refs/heads/"+archive.Branch)
+	if err != nil || !exists {
+		blocked := blockedPlan(state, StateCustodyReturned, "blocked_recover_gate_unavailable", fmt.Sprintf("the local gate branch %s is missing or unreadable; no files or refs were changed", archive.Branch))
+		blocked.Recovery = proof.evidence
+		return blocked
+	}
+	if gateHead != archive.RequiredHeadSHA {
+		if !replacementLaneHead(gateHead, archive, freshRun) {
+			blocked := blockedPlan(state, StateCustodyReturned, "blocked_recover_archive_gate_head_mismatch", fmt.Sprintf("local gate branch %s moved to %s, which is not one of run %s's own recorded heads; no files or refs were changed", archive.Branch, gateHead, freshRun.ID))
+			blocked.Recovery = proof.evidence
+			return blocked
+		}
+		if safety, message := s.moveGateLaneToKeptHead(ctx, freshRun, archive.Branch, archive.RequiredHeadSHA, gateHead); safety != "" {
+			blocked := blockedPlan(state, StateCustodyReturned, safety, message)
+			blocked.Recovery = proof.evidence
+			return blocked
+		}
+	}
+	result, _, _ := s.inspect(ctx)
+	result.Recovered = true
+	result.Changed = false
 	return result
 }
 
@@ -1889,7 +2035,7 @@ func (s *Service) inspect(ctx context.Context) (State, *db.Run, bool) {
 	if run.LastPushedSHA == nil || run.PushTargetFingerprint == nil || run.PushRef == nil || run.PushGeneration == nil || run.SubmittedHeadSHA == nil {
 		if run.SubmittedHeadSHA != nil && run.HeadSHA != ptr(run.SubmittedHeadSHA) {
 			if run.CustodyReturnedAt != nil {
-				s.classifyCustodyReturned(ctx, &state)
+				s.classifyCustodyReturned(ctx, &state, run)
 				return state, run, true
 			}
 			s.classifyPipelineOwned(ctx, &state, run, "the pipeline head has moved but has not been successfully pushed; do not make local follow-up commits yet")
@@ -1902,7 +2048,7 @@ func (s *Service) inspect(ctx context.Context) (State, *db.Run, bool) {
 		// recover, and the branch and head are immediately usable.
 		if run.SubmittedHeadSHA != nil && run.LastPushedSHA == nil {
 			if run.CustodyReturnedAt != nil {
-				s.classifyCustodyReturned(ctx, &state)
+				s.classifyCustodyReturned(ctx, &state, run)
 				return state, run, true
 			}
 			if run.Status == types.RunPending || run.Status == types.RunRunning {
@@ -2296,6 +2442,40 @@ func (proof recoverySourceProof) apply(state State) State {
 	return state
 }
 
+// applyReplacement renders a replacement-archive proof on a custody-returned
+// branch. A verified binding offers only the keep-local lane move; every
+// failed proof keeps its fail-closed code with manual reconciliation.
+func (proof recoverySourceProof) applyReplacement(state State) State {
+	if !proof.available || proof.archive == nil {
+		state = proof.apply(state)
+		state.State = StateCustodyReturned
+		return state
+	}
+	state.State = StateCustodyReturned
+	state.Safety = "replacement_recoverable"
+	state.Recovery = proof.evidence
+	state.Error = fmt.Sprintf("recovered pipeline head %s is preserved at verified archive %s; move the stale gate lane to the bound replacement head %s before starting a fresh run", proof.archive.PreservedHeadSHA, proof.archive.ArchiveRef, proof.archive.RequiredHeadSHA)
+	action := proof.action
+	state.NextAction = &action
+	return state
+}
+
+// replacementLaneHead reports whether a custody-returned gate lane still
+// holds a head the bound replacement may move it from: the replacement itself
+// or one of the run's own recorded heads. Anything else was pushed there
+// independently and is never replaced on the strength of this binding.
+func replacementLaneHead(gateHead string, record *db.RecoveryArchive, run *db.Run) bool {
+	if gateHead == "" || record == nil || run == nil {
+		return false
+	}
+	for _, head := range []string{record.RequiredHeadSHA, record.PreservedHeadSHA, run.HeadSHA, ptr(run.SubmittedHeadSHA), ptr(run.ReviewApprovedHeadSHA)} {
+		if head != "" && gateHead == head {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) missingHeadKeepLocalRuns(ctx context.Context, state *State, run *db.Run) ([]string, []string, bool, bool) {
 	if state == nil || run == nil {
 		return nil, nil, false, false
@@ -2388,7 +2568,7 @@ func (s *Service) recoverySourceAvailable(ctx context.Context, state *State, run
 	}
 	var archiveProof recoverySourceProof
 	if len(archiveRecords) > 0 {
-		archiveProof = s.verifyBoundRecoveryArchiveRecords(ctx, state, run, archiveRecords)
+		archiveProof = s.verifyBoundRecoveryArchiveRecords(ctx, state, run, archiveRecords, false)
 		if !archiveProof.available {
 			return archiveProof
 		}
@@ -2463,10 +2643,30 @@ func (s *Service) verifyBoundRecoveryArchive(ctx context.Context, state *State, 
 		proof.archiveClaimed = true
 		return proof
 	}
-	return s.verifyBoundRecoveryArchiveRecords(ctx, state, run, records)
+	return s.verifyBoundRecoveryArchiveRecords(ctx, state, run, records, false)
 }
 
-func (s *Service) verifyBoundRecoveryArchiveRecords(ctx context.Context, state *State, run *db.Run, records []*db.RecoveryArchive) recoverySourceProof {
+// replacementArchiveProof is the custody-returned counterpart of the bound
+// archive discovery in recoverySourceAvailable. A run without a record claims
+// nothing, so ordinary custody-returned classification stands; any record
+// makes the archive the only authority, verified for the exact local head.
+func (s *Service) replacementArchiveProof(ctx context.Context, state *State, run *db.Run) (recoverySourceProof, bool) {
+	if run == nil || s.DB == nil {
+		return recoverySourceProof{}, false
+	}
+	records, err := s.DB.GetRecoveryArchivesByRun(run.ID)
+	if err != nil {
+		proof := unavailableRecoverySource("blocked_recover_archive_record_unreadable", "recovery archive records could not be read; no files or refs were changed")
+		proof.archiveClaimed = true
+		return proof, true
+	}
+	if len(records) == 0 {
+		return recoverySourceProof{}, false
+	}
+	return s.verifyBoundRecoveryArchiveRecords(ctx, state, run, records, true), true
+}
+
+func (s *Service) verifyBoundRecoveryArchiveRecords(ctx context.Context, state *State, run *db.Run, records []*db.RecoveryArchive, replacement bool) recoverySourceProof {
 	if len(records) == 0 {
 		proof := unavailableRecoverySource("blocked_recover_archive_record_missing", fmt.Sprintf("the recovery archive record for run %s is missing; no files or refs were changed", run.ID))
 		proof.archiveClaimed = true
@@ -2477,10 +2677,21 @@ func (s *Service) verifyBoundRecoveryArchiveRecords(ctx context.Context, state *
 		proof.archiveClaimed = true
 		return proof
 	}
-	return s.verifyRecoveryArchiveRecord(ctx, state, run, records[0])
+	return s.verifyArchiveRecord(ctx, state, run, records[0], replacement)
 }
 
 func (s *Service) verifyRecoveryArchiveRecord(ctx context.Context, state *State, run *db.Run, record *db.RecoveryArchive) recoverySourceProof {
+	return s.verifyArchiveRecord(ctx, state, run, record, false)
+}
+
+// verifyArchiveRecord revalidates one bound archive. Before custody returns,
+// the required head must be an exact submitted, reviewed, or pushed head of the
+// unrecovered run. With replacement set, the run is the never-pushed
+// custody-returned run and the required head is the operator's authorized
+// replacement: the binding names it exactly, so the clean branch must still be
+// there, and the gate lane may still hold any of the run's own recorded heads.
+// Every other proof obligation is shared.
+func (s *Service) verifyArchiveRecord(ctx context.Context, state *State, run *db.Run, record *db.RecoveryArchive, replacement bool) recoverySourceProof {
 	proof := recoverySourceProof{archiveClaimed: true, archive: record}
 	if record != nil {
 		proof.evidence = &RecoveryEvidence{
@@ -2512,14 +2723,22 @@ func (s *Service) verifyRecoveryArchiveRecord(ctx context.Context, state *State,
 	if record.Branch != run.Branch || record.Branch != state.Local.Branch {
 		return fail("blocked_recover_archive_branch_mismatch", fmt.Sprintf("archive evidence branch %s does not match selected branch %s", record.Branch, state.Local.Branch))
 	}
-	required, requiredOK := archiveRequiredHead(*state, run)
-	if !requiredOK || record.RequiredHeadSHA != required || state.Local.Head != record.RequiredHeadSHA {
+	requiredOK := state.Local.Head == record.RequiredHeadSHA
+	if !replacement {
+		required, ok := archiveRequiredHead(*state, run)
+		requiredOK = requiredOK && ok && record.RequiredHeadSHA == required
+	}
+	if !requiredOK {
 		return fail("blocked_recover_archive_required_head_mismatch", fmt.Sprintf("archive required head %s does not match the selected exact working head %s", record.RequiredHeadSHA, state.Local.Head))
 	}
 	if record.PreservedHeadSHA != run.HeadSHA {
 		return fail("blocked_recover_archive_preserved_head_mismatch", fmt.Sprintf("archive preserved head %s does not match recorded pipeline head %s", record.PreservedHeadSHA, run.HeadSHA))
 	}
-	if !terminalRunStatus(run.Status) || run.TerminalHeadVerifiedAt == nil || run.CustodyReturnedAt != nil {
+	if replacement {
+		if !terminalRunStatus(run.Status) || run.TerminalHeadVerifiedAt == nil || run.CustodyReturnedAt == nil || run.LastPushedSHA != nil {
+			return fail("blocked_recover_archive_stale", fmt.Sprintf("archive provenance no longer describes the never-pushed custody-returned run %s", run.ID))
+		}
+	} else if !terminalRunStatus(run.Status) || run.TerminalHeadVerifiedAt == nil || run.CustodyReturnedAt != nil {
 		return fail("blocked_recover_archive_stale", fmt.Sprintf("archive provenance no longer describes an unrecovered terminal run %s", run.ID))
 	}
 	if !state.Local.Clean {
@@ -2585,7 +2804,10 @@ func (s *Service) verifyRecoveryArchiveRecord(ctx context.Context, state *State,
 	if objectType, err := git.Run(ctx, gateDir, "cat-file", "-t", gateHead); err != nil || objectType != "commit" {
 		return fail("blocked_recover_archive_gate_branch_invalid", fmt.Sprintf("local gate branch %s does not point at a commit", gateBranchRef))
 	}
-	if gateHead != record.RequiredHeadSHA && gateHead != record.PreservedHeadSHA {
+	if replacement && !replacementLaneHead(gateHead, record, run) {
+		return fail("blocked_recover_archive_gate_head_mismatch", fmt.Sprintf("local gate branch %s is at %s, not replacement head %s or one of run %s's own recorded heads", gateBranchRef, gateHead, record.RequiredHeadSHA, run.ID))
+	}
+	if !replacement && gateHead != record.RequiredHeadSHA && gateHead != record.PreservedHeadSHA {
 		return fail("blocked_recover_archive_gate_head_mismatch", fmt.Sprintf("local gate branch %s is at %s, not required head %s or preserved head %s", gateBranchRef, gateHead, record.RequiredHeadSHA, record.PreservedHeadSHA))
 	}
 
@@ -2673,21 +2895,39 @@ func RunHeadUnmoved(state State) bool {
 
 // classifyCustodyReturned reports a branch whose stranded terminal run was
 // explicitly recovered and never had a push binding. A diverged local head is
-// not ready to start a fresh run until the gate lane has safely adopted the
-// already-published rewrite; all other relationships remain informative only.
-func (s *Service) classifyCustodyReturned(ctx context.Context, state *State) {
+// not ready to start a fresh run until its gate lane holds that head: either
+// the lane still holds the recovered head and AdoptPublished can adopt an
+// already-published rewrite, or a bound replacement archive authorizes the
+// keep-local lane move. A lane that holds neither the local nor the recovered
+// head can never satisfy adoption, so adoption is not offered there. All other
+// relationships remain informative only.
+func (s *Service) classifyCustodyReturned(ctx context.Context, state *State, run *db.Run) {
 	state.State = StateCustodyReturned
 	state.Error = ""
 	state.Relation = relationBetween(ctx, s.workDir(), state.Local.Head, state.Pipeline.CurrentHead)
 	if state.Relation == RelationDiverged {
 		branchRef := "refs/heads/" + state.Local.Branch
+		gateHead := ""
 		if strings.TrimSpace(s.GateDir) != "" {
-			gateHead, err := git.Run(ctx, s.GateDir, "rev-parse", branchRef+"^{commit}")
-			if err == nil && gateHead == state.Local.Head {
+			head, err := git.Run(ctx, s.GateDir, "rev-parse", branchRef+"^{commit}")
+			if err == nil && head == state.Local.Head {
 				state.Safety = "gate_ready"
 				state.NextAction = &NextAction{Code: "run_pipeline", Command: `no-mistakes axi run --intent "<what the user set out to accomplish>"`}
 				return
 			}
+			if err == nil {
+				gateHead = head
+			}
+		}
+		if proof, claimed := s.replacementArchiveProof(ctx, state, run); claimed {
+			*state = proof.applyReplacement(*state)
+			return
+		}
+		if gateHead != "" && gateHead != state.Pipeline.CurrentHead {
+			state.Safety = "blocked_replacement_archive_required"
+			state.Error = fmt.Sprintf("the local head diverges from recovered pipeline head %s and the gate lane no longer holds that head, so published-head adoption cannot apply; to start a fresh run from this replacement head, preserve %s under a refs/heads/archive/* ref and bind it with `no-mistakes axi sync --bind-archive-ref <ref>`", state.Pipeline.CurrentHead, state.Pipeline.CurrentHead)
+			state.NextAction = &NextAction{Code: "inspect_and_reconcile_manually", Command: "no-mistakes axi status"}
+			return
 		}
 		state.Safety = "recovery_required"
 		state.NextAction = &NextAction{Code: "adopt_published", Command: "no-mistakes axi sync --adopt-published"}

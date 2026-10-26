@@ -40,6 +40,9 @@ func newSyncCmd() *cobra.Command {
 			"--bind-archive-ref records one exact existing refs/heads/archive/* commit as\n" +
 			"evidence for the narrow keep-local recovery that stays at a required head while\n" +
 			"a divergent later head remains archived; it never creates or moves a Git ref.\n" +
+			"After custody returned, the same binding authorizes the clean diverged\n" +
+			"replacement head, and --recover --keep-local then moves only the stale gate lane\n" +
+			"to it so one fresh run can start.\n" +
 			"--adopt-published moves a stale custody-returned gate lane only after the\n" +
 			"configured push target proves the exact divergent local head is already\n" +
 			"published there.",
@@ -96,7 +99,8 @@ func newAxiSyncCmd() *cobra.Command {
 			"It also performs next_action.code: recover_remote_rewritten, which anchors the\n" +
 			"superseded pipeline head and rebinds the push binding to the re-verified live head.\n" +
 			"--bind-archive-ref binds one exact existing refs/heads/archive/* commit to\n" +
-			"the selected terminal run; it never creates or moves a Git ref.\n" +
+			"the selected terminal run, or to a custody-returned run's recovered head for\n" +
+			"the exact replacement head; it never creates or moves a Git ref.\n" +
 			"--adopt-published performs the guarded gate-lane recovery offered by\n" +
 			"next_action.code: adopt_published.",
 		Args:          cobra.NoArgs,
@@ -415,6 +419,15 @@ func humanSyncSummary(state branchsync.State) string {
 		}
 		if state.Safety == "gate_ready" {
 			return "the published rebased head is present in this gate lane; start a fresh run when ready"
+		}
+		if state.Safety == "replacement_recoverable" {
+			return "the recovered pipeline head is preserved by a verified archive; move the stale gate lane to this replacement head with `no-mistakes sync --recover --keep-local`"
+		}
+		if state.Safety == "blocked_replacement_archive_required" {
+			return "this replacement head diverges from the recovered pipeline head; archive that head and bind it with `no-mistakes sync --bind-archive-ref <ref>` before a fresh run"
+		}
+		if state.NextAction != nil && state.NextAction.Code == "inspect_and_reconcile_manually" {
+			return "the bound replacement archive no longer verifies; inspect and reconcile manually"
 		}
 		return "custody returned; the branch is yours - start a fresh run when ready"
 	case branchsync.StateUserOwned:
